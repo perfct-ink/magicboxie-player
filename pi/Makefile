@@ -275,9 +275,9 @@ self-update:
 		python3 -c 'import sys; from pathlib import Path; from player_app.storage import atomic_write; atomic_write(Path(sys.argv[2]) / "magicboxie-installed-revision", sys.argv[1].encode())' "$$after" "$$(git rev-parse --git-dir)"; \
 	fi
 
-# Lets the web service user reboot/power off and start the Wi-Fi search, and nothing else.
+# Lets the web service user reboot/power off and start the Wi-Fi search or a self-update, and nothing else.
 sudoers:
-	printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/systemctl start --no-block magicboxie-wifi-search.service\n' "$$(whoami)" | sudo tee /etc/sudoers.d/magicboxie >/dev/null
+	printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/systemctl start --no-block magicboxie-wifi-search.service, /usr/bin/systemctl start --no-block magicboxie-self-update.service\n' "$$(whoami)" | sudo tee /etc/sudoers.d/magicboxie >/dev/null
 	sudo chmod 440 /etc/sudoers.d/magicboxie
 	sudo visudo -cf /etc/sudoers.d/magicboxie >/dev/null || { sudo rm -f /etc/sudoers.d/magicboxie; exit 1; }
 

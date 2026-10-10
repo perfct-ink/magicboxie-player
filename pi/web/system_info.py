@@ -242,3 +242,18 @@ async def search_wifi() -> Optional[str]:
     except (OSError, asyncio.TimeoutError) as exc:
         return f"could not start the Wi-Fi search: {exc}"
     return None if code == 0 else "the device is not permitted to search for Wi-Fi (run make wifi-service)"
+
+
+async def start_update() -> Optional[str]:
+    """Starts the self-update unit now instead of waiting for its daily timer:
+    it pulls main and, if that brought anything new, installs it and restarts
+    the player. Returns an error message if it could not start."""
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "sudo", "-n", "/usr/bin/systemctl", "start", "--no-block", "magicboxie-self-update.service",
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        code = await asyncio.wait_for(process.wait(), timeout=5)
+    except (OSError, asyncio.TimeoutError) as exc:
+        return f"could not start the update: {exc}"
+    return None if code == 0 else "the device is not permitted to update itself (run make wifi-service)"

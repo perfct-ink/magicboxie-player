@@ -188,7 +188,7 @@ function openSettings(tab) {
   $('sheet').classList.remove('hidden'); $('sheet').classList.add('top');
 }
 
-// Controls: Wi-Fi networks, reboot and shut down.
+// Controls: Wi-Fi networks, update, reboot and shut down.
 function buildControls(content, row) {
   const note = document.createElement('p'); note.className = 'meta';
   const wifi = document.createElement('div'); wifi.className = 'info';
@@ -218,6 +218,14 @@ function buildControls(content, row) {
       note.textContent = 'Searching for networks for 30 seconds… the hotspot is off. It returns if none is found.';
     } catch (error) {note.textContent = error.message;}
   });
+  const update = document.createElement('button'); update.className = 'btn grey'; update.textContent = 'Update now';
+  update.addEventListener('click', async () => {
+    if (!confirm('Check for an update and install it now? If there is one, the player restarts and any movie resumes afterwards. Needs an internet connection.')) return;
+    try {
+      await api('/api/update', {method:'POST'});
+      note.textContent = 'Checking for an update… if there is one, the player restarts to install it. Progress is under Info and the Updates log.';
+    } catch (error) {note.textContent = error.message;}
+  });
   const reboot = document.createElement('button'); reboot.className = 'btn danger'; reboot.textContent = 'Reboot device';
   reboot.addEventListener('click', async () => {
     if (!confirm('Reboot the device? Playback stops and the device is unavailable for about a minute.')) return;
@@ -234,7 +242,7 @@ function buildControls(content, row) {
       note.textContent = 'Shutting down… wait for the activity light to stop before unplugging.';
     } catch (error) {note.textContent = error.message;}
   });
-  content.append(wifi, note); row.append(search, reboot, shutdown);
+  content.append(wifi, note); row.append(search, update, reboot, shutdown);
 }
 
 // Info: device details, refreshed every 5 seconds while the tab is open.

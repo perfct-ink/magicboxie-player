@@ -90,6 +90,7 @@ def create_app(controller: PlaybackController) -> web.Application:
     app.router.add_get("/api/info", _get_info)
     app.router.add_get("/api/logs", _get_logs)
     app.router.add_post("/api/reboot", _post_reboot)
+    app.router.add_post("/api/update", _post_update)
     app.router.add_post("/api/wifi/search", _post_wifi_search)
     app.router.add_get("/api/wifi/networks", _get_wifi_networks)
     app.router.add_post("/api/wifi/networks", _post_wifi_network)
@@ -441,6 +442,13 @@ async def _get_logs(request: web.Request) -> web.Response:
 
 async def _post_reboot(request: web.Request) -> web.Response:
     error = await system_info.reboot()
+    if error:
+        return web.json_response({"error": error}, status=500)
+    return web.json_response({"ok": True})
+
+
+async def _post_update(request: web.Request) -> web.Response:
+    error = await system_info.start_update()
     if error:
         return web.json_response({"error": error}, status=500)
     return web.json_response({"ok": True})

@@ -810,6 +810,20 @@ def test_wifi_search_reports_success_and_failure():
     assert asyncio.run(scenario("nope"))[0] == 500
 
 
+def test_update_reports_success_and_failure():
+    async def scenario(error):
+        client, _ = await _make_client()
+        try:
+            with patch("web.web_service.system_info.start_update", new=AsyncMock(return_value=error)):
+                response = await client.post("/api/update")
+                return response.status, await response.json()
+        finally:
+            await client.close()
+
+    assert asyncio.run(scenario(None)) == (200, {"ok": True})
+    assert asyncio.run(scenario("nope"))[0] == 500
+
+
 def test_wifi_networks_can_be_saved_and_listed_without_passwords(tmp_path):
     path = tmp_path / "wifi.json"
 
