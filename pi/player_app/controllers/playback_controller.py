@@ -73,6 +73,12 @@ class PlaybackController:
         self.status_message: Optional[str] = None
         # Set by ThermalService while the device is too hot (playback paused).
         self.thermal_note: Optional[str] = None
+        # Set/cleared by TranscodeService: the movie being re-encoded here,
+        # how far the encode has got, and whether it's paused (playing,
+        # downloading or too hot).
+        self.currently_transcoding_movie_id: Optional[int] = None
+        self.transcode_position_seconds: Optional[float] = None
+        self.transcode_paused: bool = False
         # Updated on every command (remote or local) - IdleDimService reads
         # this to know how long it's been since anything happened, so it
         # knows when to dim the idle screen. monotonic(), not wall-clock
@@ -110,10 +116,10 @@ class PlaybackController:
     def idle_activity(self) -> Optional[IdleActivity]:
         """What the idle screen shows in place of the slideshow, in priority
         order: a software update being installed (the player restarts when
-        it's done), a download from the media server, then the media server's
-        own transcode of a movie this device is waiting for, then downloads
-        still waiting to start. None once everything is downloaded: the
-        slideshow."""
+        it's done), a download from the media server, a transcode on this
+        device, then the media server's own transcode of a movie this device
+        is waiting for, then downloads still waiting to start. None once
+        everything is done: the slideshow."""
         if self.is_updating:
             return IdleActivity("Updating", "Device software", None,
                                 "MagicBoxie restarts when it's done", color=_UPDATE_COLOR)
@@ -128,6 +134,17 @@ class PlaybackController:
             return IdleActivity("Downloading", title, percent,
                                 f"{queued} more to download" if queued else None,
                                 color=_DOWNLOAD_COLOR)
+
+        movie_id = self.currently_transcoding_movie_id
+        if movie_id is not None:
+            movie = next((m for m in self.movies if m.id == movie_id), None)
+            percent = None
+            position = self.transcode_position_seconds
+            if movie and movie.duration_seconds and position is not None:
+                percent = min(100, int(position * 100 // movie.duration_seconds))
+            return IdleActivity("Transcoding", movie.title if movie else "a movie", percent,
+                                "Paused until the device cools down" if self.transcode_paused else "On this player",
+                                movie_id=movie_id, color=_TRANSCODE_COLOR)
 
         if activity and activity.reachable and activity.preparing:
             preparing = activity.preparing

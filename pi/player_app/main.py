@@ -9,8 +9,9 @@ device directly over WiFi via mDNS and uses that for those. "http" mode
 (dev/testing - no Bluetooth required, e.g. no BlueZ on Docker Desktop/macOS)
 runs the HTTP service and mDNS advertisement alone, without BLE.
 
-Movies are not transcoded on this device: the media server makes the 480p
-copy this device downloads (see services/home_sync_service.py).
+The media server makes the 480p copy this device downloads (see
+services/home_sync_service.py). Movies that aren't that copy are re-encoded
+here in the background, only while idle and cool (services/transcode_service.py).
 """
 from __future__ import annotations
 
@@ -130,6 +131,7 @@ async def _run() -> None:
             _run_playback(controller, stop_event),
             _run_idle_dim(controller, stop_event),
             _run_thermal(controller, stop_event),
+            _run_transcode(controller, stop_event),
             _run_slideshow(controller, stop_event, startup_decided),
         ]
         if TRANSPORT != "http":
@@ -300,6 +302,14 @@ async def _run_thermal(controller: PlaybackController, stop_event: asyncio.Event
     from .services.thermal_service import ThermalService
 
     await ThermalService(controller).run(stop_event)
+
+
+async def _run_transcode(controller: PlaybackController, stop_event: asyncio.Event) -> None:
+    """Re-encodes movies that aren't the media server's player copy, only
+    while idle and cool - see services/transcode_service.py."""
+    from .services.transcode_service import TranscodeService
+
+    await TranscodeService(controller).run(stop_event)
 
 
 async def _run_status_message(controller: PlaybackController, stop_event: asyncio.Event,

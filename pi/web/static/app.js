@@ -400,6 +400,11 @@ function renderActivity(a) {
     : d.bytes_done ? mb(d.bytes_done) : 'starting') : '';
   activityGroup(body, 'Downloading from home server', d ? [activityItem(d.title, dlDetail, dlPct ?? 0)] : [], 'Nothing downloading');
   activityGroup(body, 'Download queue', a.download_queue.map(t => activityItem(t, 'waiting')));
+  const t = a.transcoding;
+  if (t) {
+    const tDetail = (t.paused ? 'paused · ' : '') + (t.percent != null ? Math.floor(t.percent) + '%' : 'starting');
+    activityGroup(body, 'Transcoding on this player (only while idle and cool)', [activityItem(t.title, tDetail, t.percent ?? 0)]);
+  }
   const home = a.home_server;
   if (home) {
     const rows = home.preparing.map(m => activityItem(m.title,

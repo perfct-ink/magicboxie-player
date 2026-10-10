@@ -346,7 +346,7 @@ async def _get_status(request: web.Request) -> web.Response:
         "syncing_movie_title": controller.currently_syncing_movie_title,
         "update_status": controller.update_status,
         "thermal_note": controller.thermal_note,
-        "transcoding_movie_id": None,  # kept for existing apps; see needs_transcoding
+        "transcoding_movie_id": controller.currently_transcoding_movie_id,
         "poll_seconds": _poll_seconds(controller, state.status.name.lower() == "playing"),
         "cpu_temperature_celsius": cpu_temperature_celsius(),
         "under_voltage": throttle.under_voltage if throttle else None,
@@ -374,9 +374,24 @@ def _activity_payload(controller: PlaybackController) -> dict:
             "reached_at": activity.reached_at,
             "preparing": list(activity.preparing),
         }
+    transcoding = None
+    movie_id = controller.currently_transcoding_movie_id
+    movie = next((m for m in controller.movies if m.id == movie_id), None) if movie_id is not None else None
+    if movie is not None:
+        position = controller.transcode_position_seconds
+        duration = movie.duration_seconds
+        transcoding = {
+            "movie_id": movie.id,
+            "title": movie.title,
+            "position_seconds": position,
+            "duration_seconds": duration,
+            "percent": min(100.0, round(position / duration * 100, 1)) if position is not None and duration else None,
+            "paused": controller.transcode_paused,
+        }
     return {
         "downloading": downloading,
         "download_queue": list(activity.queued) if activity else [],
+        "transcoding": transcoding,
         "home_server": home_server,
         # Downloads carry on while a movie plays, slowed down.
         "paused_for_playback": not controller.is_idle,

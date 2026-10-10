@@ -17,8 +17,8 @@ LIBRARY_CHARACTERISTIC_UUID = "3e2c1a00-3b42-4b7e-9c3e-000000000004"
 # app can discover it and offer to switch to WiFi for the bulk-data transports
 # (thumbnails, library, status polling) that BLE's tiny ATT payloads can't carry.
 NETWORK_INFO_CHARACTERISTIC_UUID = "3e2c1a00-3b42-4b7e-9c3e-000000000005"
-# Read-only + notify: which movie (if any) is being re-encoded on the device.
-# Nothing is any more, so it always reads "nothing"; kept for existing apps.
+# Read-only + notify: which movie (if any) is being re-encoded on the device
+# - see services/transcode_service.py.
 TRANSCODE_STATUS_CHARACTERISTIC_UUID = "3e2c1a00-3b42-4b7e-9c3e-000000000006"
 # Read-only: see API_VERSION below.
 API_VERSION_CHARACTERISTIC_UUID = "3e2c1a00-3b42-4b7e-9c3e-000000000007"

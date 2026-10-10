@@ -31,8 +31,6 @@ class MagicBoxieService(Service):
         self._controller = controller
         self._status_bytes = protocol.encode_status(PlaybackState.idle())
         self._http_port = http_port
-        # Nothing transcodes on this device any more; the characteristic stays
-        # (always "nothing") so existing apps keep working.
         self._transcode_status_bytes = protocol.encode_transcode_status(None)
         self._poll_task: Optional[asyncio.Task] = None
         self._library_bytes = b""
@@ -50,6 +48,7 @@ class MagicBoxieService(Service):
             await asyncio.sleep(
                 STATUS_POLL_INTERVAL_SECONDS if self._controller.is_idle else PLAYING_STATUS_POLL_INTERVAL_SECONDS)
             await self._refresh_status()
+            self._refresh_transcode_status()
             self._refresh_update_status()
 
     async def _refresh_status(self) -> None:
@@ -58,6 +57,12 @@ class MagicBoxieService(Service):
         if new_bytes != self._status_bytes:
             self._status_bytes = new_bytes
             self.status.changed(new_bytes)
+
+    def _refresh_transcode_status(self) -> None:
+        new_bytes = protocol.encode_transcode_status(self._controller.currently_transcoding_movie_id)
+        if new_bytes != self._transcode_status_bytes:
+            self._transcode_status_bytes = new_bytes
+            self.transcode_status.changed(new_bytes)
 
     def _refresh_update_status(self) -> None:
         value = (self._controller.update_status or "").encode("utf-8")
