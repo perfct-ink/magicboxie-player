@@ -67,6 +67,7 @@ body.welcome main{max-width:480px;text-align:center;padding-top:48px}
 .welcome .buttons{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
 .welcome a.btn{text-decoration:none;display:inline-block}
 #sheet .row{flex-wrap:wrap}
+#sheet .row.stack{flex-direction:column}
 .logs{background:#000;color:#d4d4d4;font:12px/1.4 ui-monospace,Menlo,monospace;padding:10px;border-radius:6px;max-height:50vh;overflow:auto;white-space:pre-wrap;word-break:break-word;margin:12px 0 0}
 .tabs{display:flex;gap:8px;flex-wrap:wrap}
 .net{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;font-size:14px;border-bottom:1px solid #2a2a2a}

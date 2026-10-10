@@ -285,6 +285,8 @@ function buildControls(content, row) {
       note.textContent = 'Shutting down… wait for the activity light to stop before unplugging.';
     } catch (error) {note.textContent = error.message;}
   });
+  // Controls stack one per line, so a tap never lands on the wrong one.
+  row.classList.add('stack');
   content.append(note); row.append(update, reboot, shutdown);
 }
 
