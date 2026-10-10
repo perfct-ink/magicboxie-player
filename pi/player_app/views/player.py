@@ -27,6 +27,7 @@ MPV_STARTUP_TIMEOUT_SECONDS = 30
 _OSD_RES_X = 1280
 _OSD_RES_Y = 720
 _PAUSE_ICON_OVERLAY_ID = 1
+_NOTE_OVERLAY_ID = 2
 # Two bars drawn as ASS vector shapes (rather than a Unicode "⏸" character)
 # so this doesn't depend on whatever font mpv falls back to actually having
 # that glyph. \an7\pos(40,600) anchors the drawing's own top-left origin
@@ -287,3 +288,13 @@ class MpvController:
         await self._command(
             "osd-overlay", _PAUSE_ICON_OVERLAY_ID, "none", "", _OSD_RES_X, _OSD_RES_Y,
         )
+
+    async def show_note(self, text: str) -> None:
+        """A short message across the top of the picture (white on a black
+        outline), up until hide_note() - used for the too-hot warning."""
+        safe = text.replace("\\", "").replace("{", "(").replace("}", ")")
+        ass = r"{\an8\pos(640,40)\fs44\1c&HFFFFFF&\bord4\3c&H000000&\shad0}" + safe
+        await self._command("osd-overlay", _NOTE_OVERLAY_ID, "ass-events", ass, _OSD_RES_X, _OSD_RES_Y)
+
+    async def hide_note(self) -> None:
+        await self._command("osd-overlay", _NOTE_OVERLAY_ID, "none", "", _OSD_RES_X, _OSD_RES_Y)

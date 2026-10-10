@@ -45,6 +45,11 @@ class ThermalService:
                 if state.status == PlaybackStatus.PLAYING:
                     logger.warning("Pausing the movie: device at %.0f°C", temperature)
                     await controller.handle_command(Command(Opcode.PAUSE))
+                # Over the paused picture (the idle screen carries the note
+                # itself); redrawn every check so a newly loaded movie has it.
+                await controller.player.show_note(
+                    f"Too hot ({temperature:.0f}°C) - paused. Let the device cool down.")
         elif temperature <= SAFE_AGAIN_CELSIUS and controller.thermal_note is not None:
             logger.info("Device cooled to %.0f°C", temperature)
             controller.thermal_note = None
+            await controller.player.hide_note()
