@@ -38,6 +38,24 @@ def load_networks(path: Path = WIFI_NETWORKS_PATH) -> list:
     return networks
 
 
+def load_forgotten(path: Path = WIFI_NETWORKS_PATH) -> list:
+    """SSIDs removed from the settings page, so a deploy's seed file does not
+    bring them back."""
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return []
+    forgotten = data.get("forgotten", []) if isinstance(data, dict) else []
+    return [ssid for ssid in forgotten if isinstance(ssid, str)] if isinstance(forgotten, list) else []
+
+
+def _write(path: Path, networks: list, forgotten: list) -> None:
+    data = {"version": 1, "networks": networks}
+    if forgotten:
+        data["forgotten"] = forgotten
+    atomic_write(path, (json.dumps(data, indent=2) + "\n").encode())
+
+
 def save_network(ssid: str, password: str, path: Path = WIFI_NETWORKS_PATH) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_path = path.with_suffix(".lock")
@@ -52,11 +70,29 @@ def save_network(ssid: str, password: str, path: Path = WIFI_NETWORKS_PATH) -> N
             raise ValueError("Invalid Wi-Fi SSID")
         if not isinstance(password, str) or "\x00" in password:
             raise ValueError("Invalid Wi-Fi password")
-        atomic_write(path, (json.dumps({"version": 1, "networks": networks}, indent=2) + "\n").encode())
+        _write(path, networks, [name for name in load_forgotten(path) if name != ssid])
+
+
+def remove_network(ssid: str, path: Path = WIFI_NETWORKS_PATH) -> bool:
+    """Forgets a saved network; returns False if it was not saved. Its
+    NetworkManager profile goes at the next startup or Wi-Fi search."""
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    lock_path = path.with_suffix(".lock")
+    descriptor = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    with os.fdopen(descriptor, "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        networks = load_networks(path)
+        kept = [entry for entry in networks if entry["ssid"] != ssid]
+        if len(kept) == len(networks):
+            return False
+        forgotten = [name for name in load_forgotten(path) if name != ssid] + [ssid]
+        _write(path, kept, forgotten)
+        return True
 
 
 def add_missing_networks(seed_path: Path, path: Path = WIFI_NETWORKS_PATH) -> list:
-    """Adds seed networks whose SSID the device file lacks, keeping every
+    """Adds seed networks whose SSID the device file lacks (unless removed
+    from the settings page), keeping every
     existing entry (and its password) as is. Lets a deploy deliver networks
     added to the tracked seed after the device was first installed."""
     seed = load_networks(seed_path)
@@ -66,10 +102,11 @@ def add_missing_networks(seed_path: Path, path: Path = WIFI_NETWORKS_PATH) -> li
     with os.fdopen(descriptor, "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         networks = load_networks(path)
-        known = {entry["ssid"] for entry in networks}
+        forgotten = load_forgotten(path)
+        known = {entry["ssid"] for entry in networks} | set(forgotten)
         added = [entry for entry in seed if entry["ssid"] not in known]
         if added:
-            atomic_write(path, (json.dumps({"version": 1, "networks": networks + added}, indent=2) + "\n").encode())
+            _write(path, networks + added, forgotten)
         return [entry["ssid"] for entry in added]
 
 

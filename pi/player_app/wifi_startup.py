@@ -77,6 +77,10 @@ def wait_for_saved_wifi(wait_seconds: float = STARTUP_WAIT_SECONDS) -> bool:
         time.sleep(min(1, max(0, deadline - time.monotonic())))
 
 
+def profile_name(ssid: str) -> str:
+    return "magicboxie-saved-" + hashlib.sha256(ssid.encode()).hexdigest()[:16]
+
+
 def restore_saved_networks() -> None:
     try:
         networks = load_networks()
@@ -86,7 +90,7 @@ def restore_saved_networks() -> None:
     for network in networks:
         ssid, password = network["ssid"], network["password"]
         # Stable names avoid creating a new connection on every boot.
-        name = "magicboxie-saved-" + hashlib.sha256(ssid.encode()).hexdigest()[:16]
+        name = profile_name(ssid)
         exists = nmcli("--get-values", "connection.uuid", "connection", "show", "id", name,
                        timeout=PROFILE_TIMEOUT_SECONDS)
         settings = ["connection.autoconnect", "yes", "802-11-wireless.ssid", ssid,
@@ -102,6 +106,12 @@ def restore_saved_networks() -> None:
         else:
             nmcli("connection", "add", "type", "wifi", "ifname", INTERFACE,
                   "con-name", name, *settings, timeout=PROFILE_TIMEOUT_SECONDS, log_failure=True)
+    # Drop profiles of networks removed from the settings page.
+    wanted = {profile_name(network["ssid"]) for network in networks}
+    for name in nmcli("--get-values", "NAME", "connection", "show", timeout=PROFILE_TIMEOUT_SECONDS).splitlines():
+        if name.startswith("magicboxie-saved-") and name not in wanted:
+            nmcli("connection", "delete", "id", name, timeout=PROFILE_TIMEOUT_SECONDS, log_failure=True)
+            logger.info("Removed Wi-Fi profile %s (network no longer saved)", name)
     logger.info("Restored %d saved Wi-Fi network(s): %s", len(networks),
                 ", ".join(network["ssid"] for network in networks) or "none")
 

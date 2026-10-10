@@ -193,14 +193,18 @@ can access the device's unauthenticated controls and API.
 Startup chooses once; it does not continuously switch between saved Wi-Fi
 and hotspot mode. BLE provisioning can switch the adapter to a supplied
 network. To rerun startup selection, use `make pi-wifi-start` or reboot.
-Editing the tracked seed does not replace an existing runtime file. Removing
-an entry from JSON also does not delete its NetworkManager profile.
+Editing the tracked seed does not replace an existing runtime file. A network
+removed from the settings page is recorded under `forgotten` in the runtime
+file, so later deploys do not re-add it from the seed; startup and **Find
+Wi-Fi networks** then delete `magicboxie-saved-*` NetworkManager profiles
+whose network is no longer saved.
 
 ### Searching for Wi-Fi from settings
 
 The Pi has one Wi-Fi radio, so it cannot broadcast the hotspot and scan for
-networks at once. The web page's settings (gear icon) has **Find Wi-Fi
-networks**, which runs `magicboxie-wifi-search.service`:
+networks at once. The web page's settings (gear icon) has a **Networks** tab
+showing the current connection (Wi-Fi name or hotspot, signal, IP addresses,
+internet) and the saved networks, plus **Find Wi-Fi networks**, which runs `magicboxie-wifi-search.service`:
 
 1. Stops the hotspot and brings its access point down (clients, including the
    phone using the page, disconnect).
@@ -209,11 +213,11 @@ networks**, which runs `magicboxie-wifi-search.service`:
 4. Not connected: starts the hotspot again; reconnect to **MagicBoxie Player**.
 
 To add a network without BLE or SSH (for example an iPhone Personal Hotspot),
-use **Saved Wi-Fi networks** in the same settings sheet: enter the name and
-password and tap **Save network**. This only saves it (the page stays
+use **Saved Wi-Fi networks** on the Networks tab: enter the name and
+password and tap **Save network**; **Remove** forgets one. This only saves it (the page stays
 connected to the hotspot); the saved network is joined at the next boot or by
 **Find Wi-Fi networks**. Saved names are listed, passwords never are
-(`GET/POST /api/wifi/networks`).
+(`GET/POST/DELETE /api/wifi/networks`, `GET /api/network`).
 
 The web service starts the unit with `sudo -n systemctl start --no-block
 magicboxie-wifi-search.service`, allowed by `/etc/sudoers.d/magicboxie`

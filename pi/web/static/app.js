@@ -143,7 +143,7 @@ function pollStatus() {
 document.addEventListener('visibilitychange', () => {if (!document.hidden) status();});
 load().then(status); pollStatus();
 
-// ---- Settings (gear): Controls, Logs and Info tabs ----
+// ---- Settings (gear): Controls, Networks, Logs and Info tabs ----
 let settingsTimer = null, settingsTab = 'controls';
 const dur = s => {
   const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
@@ -175,12 +175,13 @@ function openSettings(tab) {
   const panel = $('panel'); panel.replaceChildren();
   const body = document.createElement('div'); body.className = 'body';
   const h = document.createElement('h3'); h.textContent = 'Device settings';
-  const tabs = tabRow([['controls', 'Controls'], ['logs', 'Logs'], ['info', 'Info']], settingsTab, openSettings, 'tabs settings-tabs');
+  const tabs = tabRow([['controls', 'Controls'], ['networks', 'Networks'], ['logs', 'Logs'], ['info', 'Info']], settingsTab, openSettings, 'tabs settings-tabs');
   const content = document.createElement('div');
   const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';
   close.addEventListener('click', closeSheet);
   const row = document.createElement('div'); row.className = 'row';
   if (settingsTab === 'logs') buildLogs(content, row);
+  else if (settingsTab === 'networks') buildNetworks(content, row);
   else if (settingsTab === 'info') buildInfo(content);
   else buildControls(content, row);
   row.append(close); body.append(h, tabs, content, row); panel.append(body);
@@ -188,28 +189,63 @@ function openSettings(tab) {
   $('sheet').classList.remove('hidden'); $('sheet').classList.add('top');
 }
 
-// Controls: Wi-Fi networks, update, reboot and shut down.
-function buildControls(content, row) {
+// Networks: the current connection (refreshed every 5 seconds) and the
+// saved Wi-Fi networks, which can be added and removed.
+function buildNetworks(content, row) {
   const note = document.createElement('p'); note.className = 'meta';
+  const current = document.createElement('div'); current.textContent = 'Loading…';
   const wifi = document.createElement('div'); wifi.className = 'info';
   const wh = document.createElement('h4'); wh.textContent = 'Saved Wi-Fi networks';
-  const saved = document.createElement('p'); saved.className = 'meta'; saved.textContent = 'Loading…';
+  const list = document.createElement('div');
   const ssid = document.createElement('input'); ssid.placeholder = 'Network name (e.g. your iPhone)'; ssid.autocapitalize = 'off'; ssid.autocomplete = 'off';
   const pass = document.createElement('input'); pass.type = 'password'; pass.placeholder = 'Password (blank for an open network)'; pass.autocomplete = 'off';
   const add = document.createElement('button'); add.className = 'btn grey small'; add.textContent = 'Save network';
-  const loadSaved = async () => {
-    try {const r = await api('/api/wifi/networks'); saved.textContent = r.networks.length ? r.networks.join(', ') : 'None saved';}
-    catch (error) {saved.textContent = error.message;}
+  let shown = '';  // only rebuild the list when it changes, so a tap is never lost
+  const renderSaved = saved => {
+    const key = JSON.stringify(saved);
+    if (key === shown) return; shown = key; list.replaceChildren();
+    if (!saved) {const p = document.createElement('p'); p.className = 'meta'; p.textContent = 'Could not read saved networks.'; list.append(p); return;}
+    if (!saved.length) {const p = document.createElement('p'); p.className = 'meta'; p.textContent = 'None saved'; list.append(p); return;}
+    for (const n of saved) {
+      const line = document.createElement('div'); line.className = 'net';
+      const name = document.createElement('span'); name.textContent = n.ssid;
+      if (n.connected) {const c = document.createElement('small'); c.className = 'good'; c.textContent = 'Connected'; name.append(' ', c);}
+      const remove = document.createElement('button'); remove.className = 'btn grey small'; remove.textContent = 'Remove';
+      remove.addEventListener('click', async () => {
+        if (!confirm('Remove ' + n.ssid + '? The player stops joining it.' + (n.connected ? ' It stays connected until the next restart or Wi-Fi search.' : ''))) return;
+        try {
+          await api('/api/wifi/networks', {method:'DELETE', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ssid: n.ssid})});
+          note.textContent = 'Removed ' + n.ssid + '.'; refresh();
+        } catch (error) {note.textContent = error.message;}
+      });
+      line.append(name, remove); list.append(line);
+    }
+  };
+  const refresh = async () => {
+    try {
+      const n = await api('/api/network'), w = n.wifi;
+      const ips = (n.addresses || []).map(a => a.address + ' (' + a.interface + ')').join(', ');
+      const wired = (n.connections || []).filter(c => c.type === 'ethernet').map(c => c.name + ' (' + c.device + ')').join(', ');
+      const visible = (n.in_range || []).map(x => x.ssid + ' (' + x.signal + '%)').join(', ');
+      current.replaceChildren(section('Current connection', [
+        ['Wi-Fi', !w ? 'Not connected' : w.mode === 'hotspot' ? 'Hotspot: ' + w.ssid : w.ssid, w && w.mode === 'client' ? 'good' : 'warn'],
+        ['Signal', w && w.signal != null ? w.signal + '%' : null],
+        ['IP address', ips || 'None'], ['Ethernet', wired],
+        ['Internet', n.internet_reachable ? 'Reachable' : 'Not reachable', n.internet_reachable ? 'good' : 'warn'],
+        ['In range', visible],
+      ]));
+      renderSaved(n.saved_networks);
+    } catch (error) {current.textContent = 'Could not load network details: ' + error.message;}
   };
   add.addEventListener('click', async () => {
     if (!ssid.value) {note.textContent = 'Enter the network name.'; return;}
     try {
       await api('/api/wifi/networks', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ssid: ssid.value, password: pass.value})});
       note.textContent = 'Saved. Turn that network on, then tap Find Wi-Fi networks.';
-      ssid.value = ''; pass.value = ''; loadSaved();
+      ssid.value = ''; pass.value = ''; refresh();
     } catch (error) {note.textContent = error.message;}
   });
-  wifi.append(wh, saved, ssid, pass, add); loadSaved();
+  wifi.append(wh, list, ssid, pass, add);
   const search = document.createElement('button'); search.className = 'btn grey'; search.textContent = 'Find Wi-Fi networks';
   search.addEventListener('click', async () => {
     if (!confirm('Search for saved Wi-Fi networks for 30 seconds? The MagicBoxie Player hotspot turns off meanwhile, so this page disconnects. If no network is found the hotspot comes back - reconnect to it then.')) return;
@@ -218,6 +254,13 @@ function buildControls(content, row) {
       note.textContent = 'Searching for networks for 30 seconds… the hotspot is off. It returns if none is found.';
     } catch (error) {note.textContent = error.message;}
   });
+  content.append(current, wifi, note); row.append(search);
+  refresh(); settingsTimer = setInterval(() => {if (!document.hidden) refresh();}, 5000);
+}
+
+// Controls: update, reboot and shut down.
+function buildControls(content, row) {
+  const note = document.createElement('p'); note.className = 'meta';
   const update = document.createElement('button'); update.className = 'btn grey'; update.textContent = 'Update now';
   update.addEventListener('click', async () => {
     if (!confirm('Check for an update and install it now? If there is one, the player restarts and any movie resumes afterwards. Needs an internet connection.')) return;
@@ -242,7 +285,7 @@ function buildControls(content, row) {
       note.textContent = 'Shutting down… wait for the activity light to stop before unplugging.';
     } catch (error) {note.textContent = error.message;}
   });
-  content.append(wifi, note); row.append(search, update, reboot, shutdown);
+  content.append(note); row.append(update, reboot, shutdown);
 }
 
 // Info: device details, refreshed every 5 seconds while the tab is open.

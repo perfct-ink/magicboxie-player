@@ -18,7 +18,7 @@ from aiohttp import web
 from . import system_info
 from .portal import PAGE, STATIC_DIR, WELCOME_PAGE, WELCOME_URL
 from player_app.storage import publish_file, run_io
-from player_app.wifi_networks import load_networks, save_network
+from player_app.wifi_networks import load_networks, remove_network, save_network
 from player_app.controllers.playback_controller import PlaybackController
 from player_app.models.library import VIDEO_EXTENSIONS
 from player_app.models.protocol import API_VERSION, Command, Movie, Opcode
@@ -94,6 +94,8 @@ def create_app(controller: PlaybackController) -> web.Application:
     app.router.add_post("/api/wifi/search", _post_wifi_search)
     app.router.add_get("/api/wifi/networks", _get_wifi_networks)
     app.router.add_post("/api/wifi/networks", _post_wifi_network)
+    app.router.add_delete("/api/wifi/networks", _delete_wifi_network)
+    app.router.add_get("/api/network", _get_network)
     app.router.add_post("/api/shutdown", _post_shutdown)
     app.router.add_post("/api/portal/done", _post_portal_done)
     # Android, Apple, and Windows probe different HTTP paths. An unexpected
@@ -475,6 +477,31 @@ async def _post_wifi_network(request: web.Request) -> web.Response:
     except OSError:
         return web.json_response({"error": "could not save the network"}, status=500)
     return web.json_response({"ok": True})
+
+
+async def _delete_wifi_network(request: web.Request) -> web.Response:
+    """Forgets a saved network. A connection to it now stays up; the device
+    stops joining it from its next startup or Wi-Fi search."""
+    try:
+        ssid = (await request.json())["ssid"]
+        if not isinstance(ssid, str):
+            raise TypeError
+        removed = await run_io(remove_network, ssid)
+    except (ValueError, KeyError, TypeError):
+        return web.json_response({"error": "name the network to remove"}, status=400)
+    except OSError:
+        return web.json_response({"error": "could not remove the network"}, status=500)
+    if not removed:
+        return web.json_response({"error": "that network is not saved"}, status=404)
+    return web.json_response({"ok": True})
+
+
+async def _get_network(request: web.Request) -> web.Response:
+    """The Networks tab: current connection, addresses and saved networks
+    (names only, never passwords)."""
+    data = await run_io(system_info.network)
+    data["internet_reachable"] = await internet_reachable()
+    return web.json_response(data)
 
 
 async def _post_wifi_search(request: web.Request) -> web.Response:

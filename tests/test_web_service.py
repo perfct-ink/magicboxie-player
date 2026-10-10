@@ -844,6 +844,66 @@ def test_wifi_networks_can_be_saved_and_listed_without_passwords(tmp_path):
     assert asyncio.run(scenario()) == (400, 400, 200, {"networks": ["My iPhone"]})
 
 
+def test_wifi_networks_can_be_removed(tmp_path):
+    path = tmp_path / "wifi.json"
+    from player_app.wifi_networks import load_networks, remove_network, save_network
+    save_network("Mitera", "secret", path)
+
+    async def scenario():
+        client, _ = await _make_client()
+        try:
+            with patch("web.web_service.remove_network", side_effect=lambda s: remove_network(s, path)):
+                bad = await client.delete("/api/wifi/networks", json={})
+                ok = await client.delete("/api/wifi/networks", json={"ssid": "Mitera"})
+                gone = await client.delete("/api/wifi/networks", json={"ssid": "Mitera"})
+                return bad.status, ok.status, gone.status
+        finally:
+            await client.close()
+
+    assert asyncio.run(scenario()) == (400, 200, 404)
+    assert load_networks(path) == []
+
+
+def test_network_tab_shows_the_current_connection_and_saved_networks():
+    from web import system_info
+
+    def nmcli(command, *args, **kwargs):
+        line = " ".join(command)
+        if "--active" in line:
+            return "Mitera-profile:802-11-wireless:wlan0\nWired connection 1:802-3-ethernet:eth0\n"
+        if "802-11-wireless.ssid" in line:
+            return "Mitera\ninfrastructure\n"
+        if "ACTIVE,SIGNAL" in line:
+            return "no:30\nyes:72\n"
+        if "SIGNAL,SSID" in line:
+            return "72:Mitera\n40:Neighbor\n"
+        if command[:2] == ["ip", "-4"]:
+            return "2: wlan0    inet 192.168.86.57/24 brd x\n"
+        return ""
+
+    with patch.object(system_info, "_run", side_effect=lambda *c, **k: nmcli(list(c))), \
+            patch.object(system_info, "saved_wifi_names", return_value=["Mitera", "AV-iPhone17Pro"]):
+        data = system_info.network()
+    assert data["wifi"] == {"ssid": "Mitera", "mode": "client", "signal": 72}
+    assert data["addresses"] == [{"interface": "wlan0", "address": "192.168.86.57"}]
+    assert data["saved_networks"] == [{"ssid": "Mitera", "connected": True}, {"ssid": "AV-iPhone17Pro", "connected": False}]
+
+    hotspot = {"--active": "magicboxie-hotspot:802-11-wireless:wlan0\n", "802-11-wireless.ssid": "MagicBoxie Player\nap\n"}
+    with patch.object(system_info, "_run", side_effect=lambda *c, **k: next((v for key, v in hotspot.items() if key in " ".join(c)), "")):
+        assert system_info.current_wifi() == {"ssid": "MagicBoxie Player", "mode": "hotspot", "signal": None}
+
+    async def scenario():
+        client, _ = await _make_client()
+        try:
+            with patch("web.web_service.system_info.network", return_value={"wifi": None}), \
+                    patch("web.web_service.internet_reachable", new=AsyncMock(return_value=False)):
+                return await (await client.get("/api/network")).json()
+        finally:
+            await client.close()
+
+    assert asyncio.run(scenario()) == {"wifi": None, "internet_reachable": False}
+
+
 def test_activity_reports_downloads_and_the_home_servers_progress(tmp_path):
     from player_app.services.home_sync_service import SyncActivity
 

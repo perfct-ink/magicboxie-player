@@ -183,6 +183,38 @@ def wifi_in_range() -> list:
             for ssid, signal in sorted(networks.items(), key=lambda item: -item[1])]
 
 
+def current_wifi() -> Optional[dict]:
+    """What wlan0 is on now: {"ssid", "mode", "signal"}, mode "hotspot" when
+    the player broadcasts its own network, None when Wi-Fi is not connected."""
+    connection = next((c["name"] for c in active_connections() if c["device"] == "wlan0"), None)
+    if not connection:
+        return None
+    values = _terse("--get-values", "802-11-wireless.ssid,802-11-wireless.mode", "connection", "show", "id", connection)
+    ssid = values[0] if values else connection
+    mode = "hotspot" if len(values) > 1 and values[1] == "ap" else "client"
+    signal = None
+    for line in _terse("-f", "ACTIVE,SIGNAL", "device", "wifi", "list", "--rescan", "no"):
+        active, _, strength = line.partition(":")
+        if active == "yes" and strength.isdigit():
+            signal = int(strength)
+    return {"ssid": ssid, "mode": mode, "signal": signal if mode == "client" else None}
+
+
+def network() -> dict:
+    """The Networks tab: the current connection and the saved networks."""
+    wifi = current_wifi()
+    saved = saved_wifi_names()
+    return {
+        "wifi": wifi,
+        "addresses": addresses(),
+        "connections": active_connections(),
+        "saved_networks": None if saved is None else [
+            {"ssid": ssid, "connected": bool(wifi and wifi["mode"] == "client" and wifi["ssid"] == ssid)}
+            for ssid in saved],
+        "in_range": wifi_in_range(),
+    }
+
+
 def logs(source: str = "wifi", lines: int = LOG_LINES) -> dict:
     """This boot's journal for one Logs tab, with times in seconds since boot,
     plus a Wi-Fi summary on the wifi tab. Reading other units' logs needs the

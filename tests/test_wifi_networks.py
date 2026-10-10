@@ -50,11 +50,11 @@ def test_invalid_entry_does_not_replace_saved_credentials(tmp_path):
 def test_startup_restores_file_without_duplicate_profiles():
     networks = [{"ssid": "Mitera", "password": "example-password"}]
     with patch.object(wifi_startup, "load_networks", return_value=networks), \
-            patch.object(wifi_startup, "nmcli", side_effect=["", "created", "uuid", "updated"]) as cli:
+            patch.object(wifi_startup, "nmcli", side_effect=["", "created", "", "uuid", "updated", ""]) as cli:
         wifi_startup.restore_saved_networks()
         wifi_startup.restore_saved_networks()
     assert cli.call_args_list[1].args[:3] == ("connection", "add", "type")
-    assert cli.call_args_list[3].args[:3] == ("connection", "modify", "id")
+    assert cli.call_args_list[4].args[:3] == ("connection", "modify", "id")
     assert cli.call_args_list[1].args[-1] == "example-password"
 
 
@@ -87,3 +87,37 @@ def test_add_missing_networks_fills_an_empty_device_file(tmp_path):
     device.write_text('{"version": 1, "networks": []}')
     assert add_missing_networks(seed, device) == ["Mitera"]
     assert [n["ssid"] for n in load_networks(device)] == ["Mitera"]
+
+
+def test_removed_network_stays_removed_across_seed_deploys_and_save_brings_it_back(tmp_path):
+    from player_app.wifi_networks import add_missing_networks, load_forgotten, remove_network
+
+    seed = tmp_path / "seed.json"
+    seed.write_text('{"version": 1, "networks": [{"ssid": "Mitera", "password": "seed"}, {"ssid": "Phone", "password": "p"}]}')
+    device = tmp_path / "device.json"
+    add_missing_networks(seed, device)
+    assert remove_network("Phone", device) is True
+    assert remove_network("Phone", device) is False
+    assert load_networks(device) == [{"ssid": "Mitera", "password": "seed"}]
+    assert add_missing_networks(seed, device) == []
+    save_network("Phone", "new", device)
+    assert load_forgotten(device) == []
+    assert load_networks(device)[-1] == {"ssid": "Phone", "password": "new"}
+
+
+def test_startup_deletes_profiles_of_removed_networks():
+    keep = wifi_startup.profile_name("Mitera")
+    stale = wifi_startup.profile_name("Old phone")
+    calls = []
+
+    def fake(*args, **kwargs):
+        calls.append(args)
+        if args[:2] == ("--get-values", "NAME"):
+            return "\n".join([keep, stale, "magicboxie-hotspot", "Wired connection 1"])
+        return "uuid" if args[0] == "--get-values" else ""
+
+    with patch.object(wifi_startup, "load_networks", return_value=[{"ssid": "Mitera", "password": "x"}]), \
+            patch.object(wifi_startup, "nmcli", side_effect=fake):
+        wifi_startup.restore_saved_networks()
+    deletes = [c for c in calls if c[:2] == ("connection", "delete")]
+    assert deletes == [("connection", "delete", "id", stale)]
