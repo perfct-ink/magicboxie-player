@@ -187,8 +187,13 @@ async def _run_http(controller: PlaybackController, stop_event: asyncio.Event) -
         await web.TCPSite(runner, "0.0.0.0", HTTP_PORT).start()
         logger.info("Serving MagicBoxie web API on port %d", HTTP_PORT)
         if PORTAL_PORT and PORTAL_PORT != HTTP_PORT:
-            await web.TCPSite(runner, "0.0.0.0", PORTAL_PORT).start()
-            logger.info("Serving MagicBoxie captive portal on port %d", PORTAL_PORT)
+            try:
+                await web.TCPSite(runner, "0.0.0.0", PORTAL_PORT).start()
+                logger.info("Serving MagicBoxie captive portal on port %d", PORTAL_PORT)
+            except OSError as exc:
+                # Something else (e.g. nginx) holds the port: keep the API
+                # on HTTP_PORT up rather than taking the whole server down.
+                logger.warning("Captive portal unavailable on port %d (%s)", PORTAL_PORT, exc)
         await stop_event.wait()
     finally:
         await runner.cleanup()

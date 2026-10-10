@@ -144,6 +144,9 @@ service: setup
 	@# Renamed from magicboxie-device: retire the old unit so two daemons never contend for the ports.
 	-sudo systemctl disable --now magicboxie-device 2>/dev/null
 	sudo rm -f /etc/systemd/system/magicboxie-device.service
+	@# The player serves its own captive portal on port 80; a stray nginx there
+	@# answers with "Welcome to nginx" instead.
+	-sudo systemctl disable --now nginx 2>/dev/null
 	@# Home server password: an explicit value wins; otherwise keep one an earlier
 	@# deploy baked into the unit (moved to the env file once); otherwise seed a template.
 	@if [ -n "$(HOME_SERVER_PASSWORD)" ]; then \
