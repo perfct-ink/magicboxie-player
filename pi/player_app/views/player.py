@@ -38,6 +38,32 @@ _PAUSE_ICON_ASS = (
     r"{\p0}"
 )
 
+# Applied over IPC once mpv is up, so the Pi Zero keeps up with playback
+# (a file that's too heavy otherwise stutters and drifts out of sync with its
+# audio). Set as properties rather than command-line flags: an mpv that
+# doesn't know one just reports an error for it and carries on, where an
+# unknown flag would stop mpv from starting at all.
+PLAYBACK_TUNING = {
+    # Hardware H.264 decode where mpv considers it safe; software otherwise.
+    "hwdec": "auto-safe",
+    # When decoding falls behind, drop frames (in the decoder too, not just
+    # at display) so the picture catches up with the audio instead of
+    # drifting further behind it.
+    "framedrop": "decoder+vo",
+    # Skip H.264 deblocking on all but keyframes: the costliest part of
+    # software decode, and hard to see at 480p on the car's screen.
+    "vd-lavc-skiploopfilter": "nonkey",
+    "vd-lavc-fast": True,
+    # The cheapest scalers and no dithering, for the Pi's small GPU.
+    "scale": "bilinear",
+    "dscale": "bilinear",
+    "cscale": "bilinear",
+    "dither-depth": "no",
+    "correct-downscaling": False,
+    "linear-downscaling": False,
+    "sigmoid-upscaling": False,
+}
+
 
 class MpvController:
     def __init__(self, socket_path: str = "/tmp/magicboxie-mpv.sock", extra_args: Optional[List[str]] = None):
@@ -93,6 +119,8 @@ class MpvController:
 
         self._reader, self._writer = await asyncio.open_unix_connection(self._socket_path)
         self._listen_task = asyncio.create_task(self._listen())
+        for name, value in PLAYBACK_TUNING.items():
+            await self._command("set_property", name, value)
 
     async def _log_stderr(self) -> None:
         assert self._process is not None and self._process.stderr is not None
