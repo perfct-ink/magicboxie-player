@@ -160,9 +160,9 @@ def _movie_payload(controller: PlaybackController, movie: Movie) -> dict:
         "duration_seconds": movie.duration_seconds,
         "description": None,
         "year": None,
-        # Nothing transcodes on the device any more (the media server makes
-        # the 480p copy); the field stays so existing apps keep working.
-        "needs_transcoding": False,
+        # Not yet a 480p copy (the media server's, or one transcoded here):
+        # the page marks its poster.
+        "needs_transcoding": controller.library.needs_transcoding(movie.id),
         # Where playback would resume (0 = never played, or played to the
         # end) - the page draws a progress bar under movies watched partway.
         "position_seconds": controller.saved_position(movie.id),

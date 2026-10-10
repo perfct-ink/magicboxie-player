@@ -100,6 +100,11 @@ class FakeLibrary:
         transcoded = self.transcode_path_for(movie_id)
         return transcoded if transcoded.exists() else self._paths[movie_id]
 
+    def needs_transcoding(self, movie_id):
+        if self._metadata.get(movie_id, {}).get("player_copy_version"):
+            return False
+        return not self.transcode_path_for(movie_id).exists()
+
     def quarantine_failed_playback(self, movie_id):
         return False
 

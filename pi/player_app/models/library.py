@@ -184,6 +184,15 @@ class MovieLibrary:
         transcoded = self.transcode_path_for(movie_id)
         return transcoded if transcoded.exists() else self._paths[movie_id]
 
+    def needs_transcoding(self, movie_id: int) -> bool:
+        """Whether this movie still needs re-encoding for this device: its
+        file isn't the media server's player copy (metadata
+        player_copy_version, see home_sync_service.py) and no copy has been
+        transcoded here yet."""
+        if self._metadata.get(movie_id, {}).get("player_copy_version"):
+            return False
+        return not self.transcode_path_for(movie_id).exists()
+
     def replace_file(self, movie_id: int, downloaded: Path, filename: str) -> None:
         """Swaps a movie's file for a newly downloaded one (the home server's
         current player copy), keeping its id - and so its thumbnail, metadata

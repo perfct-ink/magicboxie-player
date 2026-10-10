@@ -42,6 +42,16 @@ function render() {
     const cap = document.createElement('div'); cap.className = 'cap'; cap.textContent = m.title;
     if (meta(m)) {const s = document.createElement('small'); s.textContent = meta(m); cap.append(s);}
     card.append(p, cap);
+    // Not a 480p copy yet: a chip in the bottom-right corner (pulsing while
+    // this player is transcoding it).
+    if (m.needs_transcoding) {
+      const transcoding = m.id === state.transcoding_movie_id;
+      const chip = document.createElement('span'); chip.className = 'chip480' + (transcoding ? ' active' : '');
+      chip.textContent = '480p';
+      chip.title = transcoding ? 'Transcoding to 480p now' : 'Needs transcoding to 480p';
+      chip.setAttribute('aria-label', chip.title);
+      card.classList.add('has-chip'); card.append(chip);
+    }
     // Watched partway before: a progress bar along the bottom of the poster
     // (live for the movie playing now, saved position for the rest).
     const pos = m.id === state.movie_id && state.status !== 'stopped' ? state.position_seconds : m.position_seconds;
@@ -101,13 +111,14 @@ function startTicker(m) {
 }
 async function status() {
   try {
-    const previous = state.syncing_movie_title, previousSync = state.syncing_movie_title, previousMovie = state.status === 'stopped' ? null : state.movie_id;
+    const previous = state.syncing_movie_title, previousTranscode = state.transcoding_movie_id, previousSync = state.syncing_movie_title, previousMovie = state.status === 'stopped' ? null : state.movie_id;
     state = await api('/api/status'); $('conn').textContent = state.thermal_note || 'Connected';
     stopTicker();
-    // A download started or finished: reload so the list is current. Same
+    // A download or transcode started or finished: reload so the list (and
+    // its 480p chips) is current. Same
     // when the movie playing changes or stops, so its saved position (the progress bar under it) is current.
     const playingMovie = state.status === 'stopped' ? null : state.movie_id;
-    if (previous !== undefined && (previousSync !== state.syncing_movie_title
+    if (previous !== undefined && (previousSync !== state.syncing_movie_title || previousTranscode !== state.transcoding_movie_id
         || previousMovie !== playingMovie)) await load();
     const m = movies.find(x => x.id === state.movie_id), active = m && state.status !== 'stopped';
     // Top-right spinner while the device downloads; tapping it opens the

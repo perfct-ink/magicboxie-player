@@ -48,9 +48,6 @@ CHECK_INTERVAL_SECONDS = 1.0
 # How long to wait before looking again when there's nothing to do.
 IDLE_POLL_INTERVAL_SECONDS = 15.0
 
-_PLAYER_VERSION_KEY = "player_copy_version"  # see home_sync_service.py
-
-
 class TranscodeService:
     def __init__(self, controller: PlaybackController,
                  temperature: Callable[[], Optional[float]] = cpu_temperature_celsius):
@@ -89,11 +86,7 @@ class TranscodeService:
     def _next_movie(self) -> Optional[Movie]:
         library = self._controller.library
         for movie in self._controller.movies:
-            if movie.id in self._failed_movie_ids:
-                continue
-            if library.metadata_for(movie.id).get(_PLAYER_VERSION_KEY):
-                continue  # already the media server's player copy
-            if not library.transcode_path_for(movie.id).exists():
+            if movie.id not in self._failed_movie_ids and library.needs_transcoding(movie.id):
                 return movie
         return None
 

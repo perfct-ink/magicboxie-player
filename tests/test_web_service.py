@@ -21,7 +21,8 @@ async def _make_client(library=None):
 
 def test_get_movies():
     async def scenario():
-        client, _ = await _make_client()
+        # B is the media server's 480p copy; A still needs transcoding.
+        client, _ = await _make_client(FakeLibrary(metadata={1: {"player_copy_version": 2}}))
         try:
             resp = await client.get("/api/movies")
             assert resp.status == 200
@@ -31,8 +32,9 @@ def test_get_movies():
 
     data = asyncio.run(scenario())
     assert data == [
-        {"id": 0, "title": "A", "duration_seconds": 100, "description": None, "year": None, "needs_transcoding": False, "position_seconds": 0},
-        {"id": 1, "title": "B", "duration_seconds": 200, "description": None, "year": None, "needs_transcoding": False, "position_seconds": 0},
+        {"id": 0, "title": "A", "duration_seconds": 100, "description": None, "year": None, "needs_transcoding": True, "position_seconds": 0},
+        {"id": 1, "title": "B", "duration_seconds": 200, "description": None, "year": None, "needs_transcoding": False, "position_seconds": 0,
+         "player_copy_version": 2},
     ]
 
 
@@ -293,13 +295,13 @@ def test_post_metadata_overrides_fields_in_movie_list():
         "duration_seconds": 100,
         "description": "A movie.",
         "year": 1999,
-        "needs_transcoding": False,
+        "needs_transcoding": True,
         "position_seconds": 0,
     }
     assert post_body == expected
     assert movies[0] == expected
     assert movies[1] == {
-        "id": 1, "title": "B", "duration_seconds": 200, "description": None, "year": None, "needs_transcoding": False,
+        "id": 1, "title": "B", "duration_seconds": 200, "description": None, "year": None, "needs_transcoding": True,
         "position_seconds": 0,
     }
 
