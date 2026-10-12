@@ -98,6 +98,19 @@ class PlaybackController:
         return bool(activity and activity.reachable and (activity.queued or activity.preparing))
 
     @property
+    def transcode_percent(self) -> Optional[float]:
+        """How far this player's own transcode has got (0-100), or None
+        while nothing is transcoding or its length isn't known yet."""
+        movie_id = self.currently_transcoding_movie_id
+        position = self.transcode_position_seconds
+        if movie_id is None or position is None:
+            return None
+        movie = next((m for m in self.movies if m.id == movie_id), None)
+        if movie is None or not movie.duration_seconds:
+            return None
+        return min(100.0, round(position / movie.duration_seconds * 100, 1))
+
+    @property
     def activity_message(self) -> Optional[str]:
         """What the device is busy doing, for the big banner on the idle
         screen: update/internet progress first, then downloads and

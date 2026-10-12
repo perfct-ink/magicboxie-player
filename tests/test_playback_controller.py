@@ -661,3 +661,14 @@ def test_save_position_now_writes_the_exact_position_for_every_movie(tmp_path):
     positions = json.loads((tmp_path / "movie_positions.json").read_text())
     assert positions == {"0": 30, "1": 55}
     assert json.loads(state_path.read_text())["position_seconds"] == 55
+
+
+def test_transcode_percent_follows_this_players_transcode(tmp_path):
+    controller = PlaybackController(FakeLibrary(transcode_dir=tmp_path), FakeMpv())
+    assert controller.transcode_percent is None
+    controller.currently_transcoding_movie_id = 0
+    assert controller.transcode_percent is None  # not started reporting yet
+    controller.transcode_position_seconds = 25.04
+    assert controller.transcode_percent == 25.0
+    controller.transcode_position_seconds = 150.0
+    assert controller.transcode_percent == 100.0

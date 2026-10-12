@@ -121,11 +121,20 @@ async function status() {
     if (previous !== undefined && (previousSync !== state.syncing_movie_title || previousTranscode !== state.transcoding_movie_id
         || previousMovie !== playingMovie)) await load();
     const m = movies.find(x => x.id === state.movie_id), active = m && state.status !== 'stopped';
-    // Top-right spinner while the device downloads; tapping it opens the
-    // activity panel (downloads, their queue and the home server's progress).
-    const busyLabel = 'Downloading ' + (state.syncing_movie_title || '');
-    $('busy').classList.toggle('hidden', !state.syncing_movie_title);
+    // Top-right spinner while the device downloads or transcodes a movie
+    // (with the transcode's percentage beside it); tapping it opens the
+    // activity panel (downloads, their queue and the transcode's progress).
+    const transcodingHere = state.transcoding_movie_id != null;
+    const tPct = transcodingHere && state.transcode_percent != null ? Math.floor(state.transcode_percent) + '%' : '';
+    const tMovie = transcodingHere && movies.find(x => x.id === state.transcoding_movie_id);
+    const busyLabel = state.syncing_movie_title ? 'Downloading ' + state.syncing_movie_title
+      : transcodingHere ? 'Transcoding ' + (tMovie ? tMovie.title : 'a movie') + (tPct ? ' ' + tPct : '') + (state.transcode_paused ? ' (paused)' : '')
+      : '';
+    $('busy').classList.toggle('hidden', !busyLabel);
+    $('busyPct').textContent = state.syncing_movie_title ? '' : tPct + (tPct && state.transcode_paused ? ' ❚❚' : '');
     $('busy').title = busyLabel; $('busy').setAttribute('aria-label', busyLabel);
+    // The pulsing 480p chip on the movie being transcoded shows how far it is.
+    document.querySelectorAll('.chip480.active').forEach(chip => {chip.textContent = tPct ? '480p ' + tPct : '480p';});
     $('bar').classList.toggle('hidden', !active); $('hero').classList.toggle('hidden', !active);
     if (active) {
       $('heroTitle').textContent = m.title;
@@ -438,7 +447,7 @@ function openActivity() {
   clearInterval(settingsTimer);
   const panel = $('panel'); panel.replaceChildren();
   const body = document.createElement('div'); body.className = 'body';
-  const h = document.createElement('h3'); h.textContent = 'Downloads';
+  const h = document.createElement('h3'); h.textContent = 'Activity';
   const details = document.createElement('div'); details.id = 'activityBody'; details.textContent = 'Loading…';
   const row = document.createElement('div'); row.className = 'row';
   const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';

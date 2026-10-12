@@ -103,6 +103,26 @@ def test_status_reports_currently_syncing_movie_title():
     assert data["syncing_movie_title"] == "Some Movie"
 
 
+def test_status_reports_this_players_transcode_progress():
+    async def scenario():
+        client, controller = await _make_client()
+        try:
+            idle = await (await client.get("/api/status")).json()
+            controller.currently_transcoding_movie_id = 1
+            controller.transcode_position_seconds = 85.0
+            controller.transcode_paused = True
+            busy = await (await client.get("/api/status")).json()
+            return idle, busy
+        finally:
+            await client.close()
+
+    idle, busy = asyncio.run(scenario())
+    assert idle["transcode_percent"] is None and idle["transcode_paused"] is False
+    assert busy["transcoding_movie_id"] == 1
+    assert busy["transcode_percent"] == 42.5
+    assert busy["transcode_paused"] is True
+
+
 def test_status_reports_cpu_temperature():
     async def scenario():
         client, _ = await _make_client()

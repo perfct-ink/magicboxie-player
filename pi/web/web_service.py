@@ -347,6 +347,8 @@ async def _get_status(request: web.Request) -> web.Response:
         "update_status": controller.update_status,
         "thermal_note": controller.thermal_note,
         "transcoding_movie_id": controller.currently_transcoding_movie_id,
+        "transcode_percent": controller.transcode_percent,
+        "transcode_paused": controller.transcode_paused,
         "poll_seconds": _poll_seconds(controller, state.status.name.lower() == "playing"),
         "cpu_temperature_celsius": cpu_temperature_celsius(),
         "under_voltage": throttle.under_voltage if throttle else None,
@@ -385,7 +387,7 @@ def _activity_payload(controller: PlaybackController) -> dict:
             "title": movie.title,
             "position_seconds": position,
             "duration_seconds": duration,
-            "percent": min(100.0, round(position / duration * 100, 1)) if position is not None and duration else None,
+            "percent": controller.transcode_percent,
             "paused": controller.transcode_paused,
         }
     return {
