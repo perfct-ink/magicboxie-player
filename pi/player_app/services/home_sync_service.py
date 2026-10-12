@@ -37,6 +37,9 @@ _DOWNLOAD_CHUNK_BYTES = 1024 * 1024
 # CPU, disk and Wi-Fi to playback (priority: playback, then downloads). Idle, they run flat out.
 _PLAYING_DOWNLOAD_BYTES_PER_SECOND = 1024 * 1024
 _READY_STATUS = "ready"
+# How often the home server's transcode progress is re-read while a long
+# download holds up the next check-in.
+_PREPARING_REFRESH_SECONDS = 5
 _USER_ID = "1"  # MagicBoxie-web has one shared login, not per-user accounts
 _TICKS_PER_SECOND = 10_000_000  # Jellyfin's RunTimeTicks unit is 100ns
 # The home server makes a 480p copy of each synced movie for this device
@@ -159,17 +162,22 @@ class HomeServerSync:
                     # ever tracks a single in-flight title - downloading
                     # several concurrently would also just contend with each
                     # other for the same bandwidth with nothing gained.
-                    for index, movie in enumerate(to_download):
-                        self.activity.queued = [m["Name"] for m in to_download[index + 1:]]
-                        self._on_progress(movie["Name"])
-                        try:
-                            if await self._download_movie(session, movie, headers, replace_id=local_ids.get(movie["Name"])):
-                                self._pending_metadata.append(movie)
-                        finally:
-                            self.activity.bytes_done, self.activity.bytes_total = 0, None
-                            self._on_progress(None)
-                    else:
-                        self.activity.queued = []
+                    refresher = asyncio.create_task(self._refresh_preparing(session))
+                    try:
+                        for index, movie in enumerate(to_download):
+                            self.activity.queued = [m["Name"] for m in to_download[index + 1:]]
+                            self._on_progress(movie["Name"])
+                            try:
+                                if await self._download_movie(session, movie, headers, replace_id=local_ids.get(movie["Name"])):
+                                    self._pending_metadata.append(movie)
+                            finally:
+                                self.activity.bytes_done, self.activity.bytes_total = 0, None
+                                self._on_progress(None)
+                        else:
+                            self.activity.queued = []
+                    finally:
+                        refresher.cancel()
+                        await asyncio.gather(refresher, return_exceptions=True)
 
             if not self._pending_metadata:
                 if not to_download:
@@ -195,14 +203,7 @@ class HomeServerSync:
                 if resp.status == 200:
                     data = await resp.json()
                     items = data.get("items") or data.get("Items") or []
-                    self._reached([
-                        {
-                            "title": item.get("Name") or "",
-                            "status": item.get("Status") or "",
-                            "progress_percent": item.get("ProgressPercent"),
-                        }
-                        for item in data.get("MagicBoxiePreparing") or []
-                    ])
+                    self._reached(self._preparing_from(data))
                     return [self._normalize_registered_movie(item) for item in items]
                 logger.info("Home server check-in: registration endpoint responded HTTP %d", resp.status)
         except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
@@ -215,6 +216,34 @@ class HomeServerSync:
         movies = await self._list_ready_movies(session, headers)
         self._reached([])
         return movies
+
+    @staticmethod
+    def _preparing_from(data: dict) -> List[dict]:
+        return [
+            {
+                "title": item.get("Name") or "",
+                "status": item.get("Status") or "",
+                "progress_percent": item.get("ProgressPercent"),
+            }
+            for item in data.get("MagicBoxiePreparing") or []
+        ]
+
+    async def _refresh_preparing(self, session: aiohttp.ClientSession) -> None:
+        """Re-reads the home server's transcode progress every few seconds
+        while a download runs - a check-in can spend many minutes on one
+        movie, and the activity panel's percentage would sit still meanwhile."""
+        while self.activity.preparing:
+            await asyncio.sleep(_PREPARING_REFRESH_SECONDS)
+            try:
+                async with session.post(
+                    f"{self._base_url}/devices/register",
+                    json={"device_id": self._device_id},
+                    timeout=aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT_SECONDS),
+                ) as resp:
+                    if resp.status == 200:
+                        self.activity.preparing = self._preparing_from(await resp.json())
+            except (aiohttp.ClientError, TimeoutError, ValueError) as exc:
+                logger.debug("Home server: couldn't refresh transcode progress (%s)", exc)
 
     def _reached(self, preparing: List[dict]) -> None:
         self.activity.reachable = True

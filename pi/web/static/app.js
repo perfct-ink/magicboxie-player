@@ -121,10 +121,16 @@ async function status() {
     if (previous !== undefined && (previousSync !== state.syncing_movie_title || previousTranscode !== state.transcoding_movie_id
         || previousMovie !== playingMovie)) await load();
     const m = movies.find(x => x.id === state.movie_id), active = m && state.status !== 'stopped';
-    // Top-right spinner while the device downloads; tapping it opens the
-    // activity panel (downloads, their queue and the home server's progress).
-    const busyLabel = 'Downloading ' + (state.syncing_movie_title || '');
-    $('busy').classList.toggle('hidden', !state.syncing_movie_title);
+    // Top-right spinner while the device downloads or something is being
+    // transcoded (here or on the home server, with its percentage); tapping
+    // it opens the activity panel (downloads, their queue and transcodes).
+    const home = state.home_transcoding;
+    const homePct = home && home.percent != null ? Math.floor(home.percent) + '%' : '';
+    const busyLabel = state.syncing_movie_title ? 'Downloading ' + state.syncing_movie_title
+      : home ? 'Home server transcoding ' + home.title + (homePct ? ' ' + homePct : '')
+      : state.transcoding_movie_id != null ? 'Transcoding on this player' : '';
+    $('busy').classList.toggle('hidden', !busyLabel);
+    $('busyPct').textContent = !state.syncing_movie_title && home ? homePct : '';
     $('busy').title = busyLabel; $('busy').setAttribute('aria-label', busyLabel);
     $('bar').classList.toggle('hidden', !active); $('hero').classList.toggle('hidden', !active);
     if (active) {
@@ -434,7 +440,7 @@ function openActivity() {
   clearInterval(settingsTimer);
   const panel = $('panel'); panel.replaceChildren();
   const body = document.createElement('div'); body.className = 'body';
-  const h = document.createElement('h3'); h.textContent = 'Downloads';
+  const h = document.createElement('h3'); h.textContent = 'Activity';
   const details = document.createElement('div'); details.id = 'activityBody'; details.textContent = 'Loading…';
   const row = document.createElement('div'); row.className = 'row';
   const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';

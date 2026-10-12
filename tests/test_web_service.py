@@ -103,6 +103,26 @@ def test_status_reports_currently_syncing_movie_title():
     assert data["syncing_movie_title"] == "Some Movie"
 
 
+def test_status_reports_what_the_home_server_is_transcoding():
+    from player_app.services.home_sync_service import SyncActivity
+
+    async def scenario():
+        client, controller = await _make_client()
+        try:
+            data = await (await client.get("/api/status")).json()
+            assert data["home_transcoding"] is None
+            controller.sync_activity = SyncActivity(reachable=True, preparing=[
+                {"title": "Queued", "status": "pending", "progress_percent": None},
+                {"title": "Zeta", "status": "transcoding", "progress_percent": 40.5},
+            ])
+            return await (await client.get("/api/status")).json()
+        finally:
+            await client.close()
+
+    data = asyncio.run(scenario())
+    assert data["home_transcoding"] == {"title": "Zeta", "percent": 40.5}
+
+
 def test_status_reports_cpu_temperature():
     async def scenario():
         client, _ = await _make_client()

@@ -98,6 +98,19 @@ class PlaybackController:
         return bool(activity and activity.reachable and (activity.queued or activity.preparing))
 
     @property
+    def home_server_transcode(self) -> Optional[dict]:
+        """The movie the home server is transcoding for this device right
+        now, {"title", "percent"}, for the web page's header; None while it
+        isn't reachable or isn't transcoding anything for it."""
+        activity = self.sync_activity
+        if not (activity and activity.reachable):
+            return None
+        item = next((p for p in activity.preparing if p.get("status") == "transcoding"), None)
+        if item is None:
+            return None
+        return {"title": item.get("title") or "a movie", "percent": item.get("progress_percent")}
+
+    @property
     def activity_message(self) -> Optional[str]:
         """What the device is busy doing, for the big banner on the idle
         screen: update/internet progress first, then downloads and

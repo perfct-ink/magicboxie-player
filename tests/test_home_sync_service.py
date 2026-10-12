@@ -557,3 +557,34 @@ def test_download_is_throttled_only_while_playing(tmp_path, monkeypatch):
     assert sleeps == []
     download(idle=False)
     assert len(sleeps) == 3 and all(0 < s <= 0.1 for s in sleeps)
+
+
+def test_home_server_progress_keeps_updating_during_a_long_download(tmp_path, monkeypatch):
+    from aioresponses import CallbackResult
+    import player_app.services.home_sync_service as home_sync
+
+    monkeypatch.setattr(home_sync, "_PREPARING_REFRESH_SECONDS", 0.01)
+    library = _library(tmp_path)
+    sync = HomeServerSync(library, BASE_URL, "secret")
+    seen_during_download = []
+
+    async def slow_download(url, **kwargs):
+        await asyncio.sleep(0.2)
+        seen_during_download.extend(sync.activity.preparing)
+        return CallbackResult(body=b"alpha-bytes")
+
+    def register(percent):
+        return {
+            "Items": [{"Id": "1", "Name": "Alpha", "MagicBoxieOriginalFilename": "alpha.mp4"}],
+            "MagicBoxiePreparing": [{"Name": "Gamma", "Status": "transcoding", "ProgressPercent": percent}],
+        }
+
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE_URL}/devices/register", payload=register(10.0))
+        mocked.post(f"{BASE_URL}/devices/register", payload=register(60.0), repeat=True)
+        mocked.post(f"{BASE_URL}/Users/AuthenticateByName", payload={"AccessToken": "tok123"})
+        mocked.get(f"{BASE_URL}/Videos/1/stream?static=true", callback=slow_download)
+        asyncio.run(sync.check_in())
+
+    assert (tmp_path / "movies" / "Alpha.mp4").read_bytes() == b"alpha-bytes"
+    assert seen_during_download == [{"title": "Gamma", "status": "transcoding", "progress_percent": 60.0}]
