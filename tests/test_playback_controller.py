@@ -661,16 +661,3 @@ def test_save_position_now_writes_the_exact_position_for_every_movie(tmp_path):
     positions = json.loads((tmp_path / "movie_positions.json").read_text())
     assert positions == {"0": 30, "1": 55}
     assert json.loads(state_path.read_text())["position_seconds"] == 55
-
-
-def test_home_server_transcode_only_while_reachable_and_transcoding(tmp_path):
-    controller = PlaybackController(FakeLibrary(transcode_dir=tmp_path), FakeMpv())
-    assert controller.home_server_transcode is None
-    controller.sync_activity = _activity(reachable=True, preparing=[
-        {"title": "Queued", "status": "needs_transcode", "progress_percent": None},
-    ])
-    assert controller.home_server_transcode is None
-    controller.sync_activity.preparing.append({"title": "Zeta", "status": "transcoding", "progress_percent": 12.0})
-    assert controller.home_server_transcode == {"title": "Zeta", "percent": 12.0}
-    controller.sync_activity.reachable = False
-    assert controller.home_server_transcode is None

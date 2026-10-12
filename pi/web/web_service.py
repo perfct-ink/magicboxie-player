@@ -347,7 +347,6 @@ async def _get_status(request: web.Request) -> web.Response:
         "update_status": controller.update_status,
         "thermal_note": controller.thermal_note,
         "transcoding_movie_id": controller.currently_transcoding_movie_id,
-        "home_transcoding": controller.home_server_transcode,
         "poll_seconds": _poll_seconds(controller, state.status.name.lower() == "playing"),
         "cpu_temperature_celsius": cpu_temperature_celsius(),
         "under_voltage": throttle.under_voltage if throttle else None,
