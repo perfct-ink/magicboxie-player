@@ -252,22 +252,21 @@ function buildNetworks(content, row) {
         ['In range', visible],
       ]));
       renderSaved(n.saved_networks);
-      // While broadcasting, joining Wi-Fi is the main thing to do here.
+      // Only offered while broadcasting: on Wi-Fi or Ethernet there is nothing to join.
       const broadcasting = !!(w && w.mode === 'hotspot');
-      search.textContent = broadcasting ? 'Stop hotspot and join Wi-Fi' : 'Find Wi-Fi networks';
-      search.className = 'btn ' + (broadcasting ? 'red' : 'grey');
+      join.classList.toggle('hidden', !broadcasting);
     } catch (error) {current.textContent = 'Could not load network details: ' + error.message;}
   };
   add.addEventListener('click', async () => {
     if (!ssid.value) {note.textContent = 'Enter the network name.'; return;}
     try {
       await api('/api/wifi/networks', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ssid: ssid.value, password: pass.value})});
-      note.textContent = 'Saved. Turn that network on, then tap the join Wi-Fi button above.';
+      note.textContent = 'Saved. Turn that network on, then tap Stop hotspot and join Wi-Fi.';
       ssid.value = ''; pass.value = ''; refresh();
     } catch (error) {note.textContent = error.message;}
   });
   wifi.append(wh, list, ssid, pass, add);
-  const search = document.createElement('button'); search.className = 'btn grey'; search.textContent = 'Find Wi-Fi networks';
+  const search = document.createElement('button'); search.className = 'btn red'; search.textContent = 'Stop hotspot and join Wi-Fi';
   search.addEventListener('click', async () => {
     if (!confirm('Stop the MagicBoxie Player hotspot and try to join a saved Wi-Fi network for 30 seconds? This page disconnects. If no network connects, the hotspot comes back - reconnect to it then.')) return;
     try {
@@ -275,7 +274,7 @@ function buildNetworks(content, row) {
       note.textContent = 'Hotspot off. Trying saved Wi-Fi for 30 seconds… if none connects, the hotspot returns.';
     } catch (error) {note.textContent = error.message;}
   });
-  const join = document.createElement('div'); join.className = 'row'; join.append(search);
+  const join = document.createElement('div'); join.className = 'row hidden'; join.append(search);
   content.append(current, join, wifi, note);
   refresh(); settingsTimer = setInterval(() => {if (!document.hidden) refresh();}, 5000);
 }
