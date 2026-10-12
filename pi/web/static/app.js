@@ -252,26 +252,31 @@ function buildNetworks(content, row) {
         ['In range', visible],
       ]));
       renderSaved(n.saved_networks);
+      // While broadcasting, joining Wi-Fi is the main thing to do here.
+      const broadcasting = !!(w && w.mode === 'hotspot');
+      search.textContent = broadcasting ? 'Stop hotspot and join Wi-Fi' : 'Find Wi-Fi networks';
+      search.className = 'btn ' + (broadcasting ? 'red' : 'grey');
     } catch (error) {current.textContent = 'Could not load network details: ' + error.message;}
   };
   add.addEventListener('click', async () => {
     if (!ssid.value) {note.textContent = 'Enter the network name.'; return;}
     try {
       await api('/api/wifi/networks', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ssid: ssid.value, password: pass.value})});
-      note.textContent = 'Saved. Turn that network on, then tap Find Wi-Fi networks.';
+      note.textContent = 'Saved. Turn that network on, then tap the join Wi-Fi button above.';
       ssid.value = ''; pass.value = ''; refresh();
     } catch (error) {note.textContent = error.message;}
   });
   wifi.append(wh, list, ssid, pass, add);
   const search = document.createElement('button'); search.className = 'btn grey'; search.textContent = 'Find Wi-Fi networks';
   search.addEventListener('click', async () => {
-    if (!confirm('Search for saved Wi-Fi networks for 30 seconds? The MagicBoxie Player hotspot turns off meanwhile, so this page disconnects. If no network is found the hotspot comes back - reconnect to it then.')) return;
+    if (!confirm('Stop the MagicBoxie Player hotspot and try to join a saved Wi-Fi network for 30 seconds? This page disconnects. If no network connects, the hotspot comes back - reconnect to it then.')) return;
     try {
       await api('/api/wifi/search', {method:'POST'});
-      note.textContent = 'Searching for networks for 30 seconds… the hotspot is off. It returns if none is found.';
+      note.textContent = 'Hotspot off. Trying saved Wi-Fi for 30 seconds… if none connects, the hotspot returns.';
     } catch (error) {note.textContent = error.message;}
   });
-  content.append(current, wifi, note); row.append(search);
+  const join = document.createElement('div'); join.className = 'row'; join.append(search);
+  content.append(current, join, wifi, note);
   refresh(); settingsTimer = setInterval(() => {if (!document.hidden) refresh();}, 5000);
 }
 

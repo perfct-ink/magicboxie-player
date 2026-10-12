@@ -28,3 +28,16 @@ document.getElementById('done').addEventListener('click', async () => {
     note.textContent = 'Could not finish. Close this window and open ' + address + ' in your browser.';
   }
 });
+
+// Join Wi-Fi: drop the hotspot and try saved networks (e.g. Mitera or a phone
+// hotspot) for 30 seconds; the hotspot comes back if none connects.
+document.getElementById('join').addEventListener('click', async () => {
+  if (!confirm('Stop the hotspot and try saved Wi-Fi for 30 seconds? You will be disconnected. If no network connects, the hotspot comes back.')) return;
+  try {
+    const response = await fetch('/api/wifi/search', {method: 'POST'});
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || 'request failed');
+    note.textContent = 'Hotspot off. Trying saved Wi-Fi for 30 seconds… if none connects, the hotspot returns.';
+  } catch (error) {
+    note.textContent = 'Could not stop the hotspot: ' + error.message;
+  }
+});
