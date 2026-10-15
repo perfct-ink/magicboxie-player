@@ -72,7 +72,7 @@ function openSheet(m) {
   body.append(h, mt);
   if (m.description) {const p = document.createElement('p'); p.textContent = m.description; body.append(p);}
   const row = document.createElement('div'); row.className = 'row';
-  const play = document.createElement('button'); play.className = 'btn'; play.textContent = '▶ Play on device';
+  const play = document.createElement('button'); play.className = 'btn'; play.textContent = '▶ Play';
   play.addEventListener('click', () => {closeSheet(); command('select_movie', m.id);});
   const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';
   close.addEventListener('click', closeSheet);
