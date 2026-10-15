@@ -197,14 +197,16 @@ function openSettings(tab) {
   const h = document.createElement('h3'); h.textContent = 'Device settings';
   const tabs = tabRow([['controls', 'Controls'], ['networks', 'Networks'], ['logs', 'Logs'], ['info', 'Info']], settingsTab, openSettings, 'tabs settings-tabs');
   const content = document.createElement('div');
-  const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';
+  // One close "x" in the header on every tab, instead of a Close button in each tab's row.
+  const close = document.createElement('button'); close.className = 'close-x'; close.setAttribute('aria-label', 'Close settings'); close.textContent = '×';
   close.addEventListener('click', closeSheet);
+  const head = document.createElement('div'); head.className = 'sheet-head'; head.append(h, close);
   const row = document.createElement('div'); row.className = 'row';
   if (settingsTab === 'logs') buildLogs(content, row);
   else if (settingsTab === 'networks') buildNetworks(content, row);
   else if (settingsTab === 'info') buildInfo(content);
   else buildControls(content, row);
-  row.append(close); body.append(h, tabs, content, row); panel.append(body);
+  body.append(head, tabs, content); if (row.children.length) body.append(row); panel.append(body);
   // Settings drops down from the top; movie details still rise from the bottom.
   $('sheet').classList.remove('hidden'); $('sheet').classList.add('top');
 }

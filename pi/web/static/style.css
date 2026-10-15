@@ -84,3 +84,6 @@ body.welcome main{max-width:480px;text-align:center;padding-top:48px}
 #sheet.top .panel{border-radius:0 0 12px 12px;padding-bottom:0;padding-top:env(safe-area-inset-top)}
 /* On phones the settings sheet takes the whole screen, pinned to the top. */
 @media (max-width:600px){#sheet.top .panel{max-width:none;height:100vh;height:100dvh;max-height:none;border-radius:0;box-sizing:border-box;padding-bottom:env(safe-area-inset-bottom)}}
+#sheet .sheet-head{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#181818;margin:-16px -16px 0;padding:16px 16px 6px}
+#sheet .sheet-head h3{margin:0}
+.close-x{flex:none;width:36px;height:36px;border:0;border-radius:50%;background:rgba(109,109,110,.7);color:#fff;font-size:24px;line-height:36px;padding:0;cursor:pointer}
