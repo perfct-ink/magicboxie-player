@@ -71,6 +71,20 @@ class SyncActivity:
     reachable: bool = False
 
 
+class _Login:
+    """Logs in to the home server at most once, on first use."""
+
+    def __init__(self, sync: "HomeServerSync", session: aiohttp.ClientSession):
+        self._sync, self._session = sync, session
+        self._tried, self._token = False, None
+
+    async def token(self) -> Optional[str]:
+        if not self._tried:
+            self._tried = True
+            self._token = await self._sync._authenticate(self._session)
+        return self._token
+
+
 class HomeServerSync:
     def __init__(
         self,
@@ -137,39 +151,34 @@ class HomeServerSync:
             # scan below waits for idle (it forks ffmpeg for each new file).
             if to_download:
                 self._on_busy(True)
-            if to_download:
-                # /devices/register (the common path above) lists movies
-                # without authenticating, but the video bytes themselves are
-                # served from an authenticated route - unlike the metadata-
-                # only registration listing, anonymous access to stream
-                # arbitrary video would be a real information-disclosure
-                # concern. A token is needed here regardless of which path
-                # found the movies to download.
-                token = await self._authenticate(session)
-                if token is None:
-                    logger.info(
-                        "Home server check-in: found %d new movie(s) but couldn't authenticate to download them",
-                        len(to_download),
-                    )
-                else:
-                    headers = {"Authorization": f"Bearer {token}"}
-                    logger.info("Home server check-in: downloading %d new movie(s)", len(to_download))
-                    # One at a time, deliberately: these are large files over
-                    # a slow WiFi/USB-tethered link, and _on_progress only
-                    # ever tracks a single in-flight title - downloading
-                    # several concurrently would also just contend with each
-                    # other for the same bandwidth with nothing gained.
-                    for index, movie in enumerate(to_download):
-                        self.activity.queued = [m["Name"] for m in to_download[index + 1:]]
-                        self._on_progress(movie["Name"])
-                        try:
-                            if await self._download_movie(session, movie, headers, replace_id=local_ids.get(movie["Name"])):
-                                self._pending_metadata.append(movie)
-                        finally:
-                            self.activity.bytes_done, self.activity.bytes_total = 0, None
-                            self._on_progress(None)
-                    else:
-                        self.activity.queued = []
+                # The media server hands movies marked for this device out
+                # without a password (/devices/videos). Only a server that
+                # doesn't (older, or one behind homecloud) needs the login,
+                # done at most once per check-in and only when first needed.
+                login = _Login(self, session)
+                logger.info("Home server check-in: downloading %d new movie(s)", len(to_download))
+                # One at a time, deliberately: these are large files over
+                # a slow WiFi/USB-tethered link, and _on_progress only
+                # ever tracks a single in-flight title - downloading
+                # several concurrently would also just contend with each
+                # other for the same bandwidth with nothing gained.
+                # Movies that failed stay queued, so the panel still shows
+                # them and main.py looks again soon.
+                failed = []
+                for index, movie in enumerate(to_download):
+                    self.activity.queued = [m["Name"] for m in to_download[index + 1:]]
+                    self._on_progress(movie["Name"])
+                    replace_id = local_ids.get(movie["Name"])
+                    already_here = replace_id is None and (self._library.root / self._local_filename(movie)).exists()
+                    try:
+                        if await self._download_movie(session, movie, login, replace_id=replace_id):
+                            self._pending_metadata.append(movie)
+                        elif not already_here:
+                            failed.append(movie["Name"])
+                    finally:
+                        self.activity.bytes_done, self.activity.bytes_total = 0, None
+                        self._on_progress(None)
+                self.activity.queued = failed
 
             if not self._pending_metadata:
                 if not to_download:
@@ -249,20 +258,41 @@ class HomeServerSync:
         items = data.get("Items", [])
         return [item for item in items if item.get("MagicBoxieStatus") == _READY_STATUS]
 
-    async def _download_movie(self, session: aiohttp.ClientSession, movie: dict, headers: dict,
+    async def _download_movie(self, session: aiohttp.ClientSession, movie: dict, login: "_Login",
                               replace_id: Optional[int] = None) -> bool:
         """Downloads a movie into the library, or with replace_id, downloads
-        a newer player copy and swaps it in for that movie's file."""
+        a newer player copy and swaps it in for that movie's file. Tries the
+        password-free device route first, then the logged-in one."""
         dest_path = self._library.root / self._local_filename(movie)
         if dest_path.exists() and replace_id is None:
             return False
 
         logger.info("Home server check-in: downloading %r", movie["Name"])
+        kind = "player" if self._is_player_copy(movie) else "stream"
+        result = await self._fetch_to_library(
+            session, movie, dest_path, replace_id, f"{self._base_url}/devices/videos/{movie['Id']}/{kind}", None, None)
+        if result is not None:
+            return result
+        token = await login.token()
+        if token is None:
+            logger.info("Home server check-in: couldn't log in to download %r", movie["Name"])
+            return False
+        params = None if kind == "player" else {"static": "true"}
+        result = await self._fetch_to_library(
+            session, movie, dest_path, replace_id, f"{self._base_url}/Videos/{movie['Id']}/{kind}", params,
+            {"Authorization": f"Bearer {token}"})
+        if result is None:
+            logger.warning("Home server check-in: download of %r failed", movie["Name"])
+        return bool(result)
+
+    async def _fetch_to_library(self, session: aiohttp.ClientSession, movie: dict, dest_path: Path,
+                                replace_id: Optional[int], url: str, params: Optional[dict],
+                                headers: Optional[dict]) -> Optional[bool]:
+        """Downloads url into dest_path. None when the server didn't start
+        sending it (an error status, or no connection), so another route can
+        be tried; False when the download itself failed."""
         temporary = dest_path.with_name("." + dest_path.name + ".partial")
-        if self._is_player_copy(movie):
-            url, params = f"{self._base_url}/Videos/{movie['Id']}/player", None
-        else:
-            url, params = f"{self._base_url}/Videos/{movie['Id']}/stream", {"static": "true"}
+        started = False
         try:
             async with session.get(
                 url,
@@ -271,8 +301,9 @@ class HomeServerSync:
                 timeout=aiohttp.ClientTimeout(total=None, sock_connect=10, sock_read=60),
             ) as resp:
                 if resp.status != 200:
-                    logger.warning("Home server check-in: download of %r failed (HTTP %d)", movie["Name"], resp.status)
-                    return False
+                    logger.info("Home server check-in: %s responded HTTP %d", url, resp.status)
+                    return None
+                started = True
                 self.activity.bytes_done, self.activity.bytes_total = 0, resp.content_length
                 with temporary.open("wb") as f:
                     chunk_started = time.monotonic()
@@ -296,6 +327,9 @@ class HomeServerSync:
                     await run_io(self._library.save_metadata, replace_id,
                                  **{_PLAYER_VERSION_KEY: self._player_version(movie)})
         except (aiohttp.ClientError, TimeoutError, OSError) as exc:
+            if not started:
+                logger.info("Home server check-in: %s unavailable (%s)", url, exc)
+                return None
             logger.warning("Home server check-in: download of %r failed (%s)", movie["Name"], exc)
             return False
         finally:

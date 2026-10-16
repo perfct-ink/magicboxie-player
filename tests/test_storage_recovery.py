@@ -119,5 +119,5 @@ def test_interrupted_download_never_publishes_movie(tmp_path):
             return Response()
 
     with pytest.raises(asyncio.CancelledError):
-        asyncio.run(sync._download_movie(Session(), {"Id": "1", "Name": "Movie"}, {}))
+        asyncio.run(sync._download_movie(Session(), {"Id": "1", "Name": "Movie"}, None))
     assert list(library.root.iterdir()) == []

@@ -557,3 +557,22 @@ def test_download_is_throttled_only_while_playing(tmp_path, monkeypatch):
     assert sleeps == []
     download(idle=False)
     assert len(sleeps) == 3 and all(0 < s <= 0.1 for s in sleeps)
+
+
+def test_check_in_downloads_synced_movie_without_a_password(tmp_path):
+    library = _library(tmp_path)
+    sync = HomeServerSync(library, BASE_URL, "")
+
+    with aioresponses() as mocked:
+        mocked.post(
+            f"{BASE_URL}/devices/register",
+            payload={"Items": [{"Id": "movie-7", "Name": "Alpha", "MagicBoxieOriginalFilename": "alpha.mkv",
+                                "MagicBoxieStatus": "ready", "MagicBoxiePlayerStatus": "ready",
+                                "MagicBoxiePlayerVersion": 2}]},
+        )
+        mocked.get(f"{BASE_URL}/devices/videos/movie-7/player", body=b"player-copy")
+
+        asyncio.run(sync.check_in())
+
+        assert not any(url.path == "/Users/AuthenticateByName" for _method, url in mocked.requests)
+    assert (tmp_path / "movies" / "Alpha.mp4").read_bytes() == b"player-copy"
