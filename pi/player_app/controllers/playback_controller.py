@@ -216,12 +216,15 @@ class PlaybackController:
         down, so they don't compete with playback decode on the single core."""
         return self._current_movie_id is None
 
-    async def handle_command(self, cmd: Command) -> None:
+    async def handle_command(self, cmd: Command, from_start: bool = False) -> None:
+        """from_start: a SELECT_MOVIE plays from the beginning instead of
+        resuming at the movie's saved position (the web page's "Play from
+        beginning")."""
         self.last_input_at = time.monotonic()
         async with self._lock:
-            await self._handle_command(cmd)
+            await self._handle_command(cmd, from_start)
 
-    async def _handle_command(self, cmd: Command) -> None:
+    async def _handle_command(self, cmd: Command, from_start: bool = False) -> None:
         if cmd.opcode == Opcode.SELECT_MOVIE and cmd.argument is not None:
             if not any(movie.id == cmd.argument for movie in self.movies):
                 # A client's cached movie list can be stale relative to what
@@ -232,6 +235,8 @@ class PlaybackController:
                 logger.warning("Ignoring select_movie for unknown movie id %d", cmd.argument)
                 return
             await self._remember_position()
+            if from_start:
+                self._set_position(cmd.argument, 0)
             self._current_movie_id = cmd.argument
             await self.player.load(self.library.playable_path_for(cmd.argument),
                                    start_seconds=self._resume_position(cmd.argument))

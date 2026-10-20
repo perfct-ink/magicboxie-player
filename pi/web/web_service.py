@@ -418,7 +418,7 @@ async def _post_command(request: web.Request) -> web.Response:
 
     argument = payload.get("argument")
     cmd = Command(opcode=opcode, argument=None if argument is None else int(argument))
-    await controller.handle_command(cmd)
+    await controller.handle_command(cmd, from_start=bool(payload.get("from_start")))
     return web.json_response({"ok": True})
 
 

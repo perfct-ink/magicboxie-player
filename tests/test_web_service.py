@@ -89,6 +89,20 @@ def test_post_command_select_and_play_reflected_in_status():
     assert data["movie_id"] == 1
 
 
+
+def test_post_command_select_from_start_plays_from_the_beginning():
+    async def scenario():
+        client, controller = await _make_client()
+        try:
+            controller._set_position(1, 120)
+            resp = await client.post("/api/command", json={"opcode": "select_movie", "argument": 1, "from_start": True})
+            assert resp.status == 200
+            return controller.saved_position(1)
+        finally:
+            await client.close()
+
+    assert asyncio.run(scenario()) == 0
+
 def test_status_reports_currently_syncing_movie_title():
     async def scenario():
         client, controller = await _make_client()

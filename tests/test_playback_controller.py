@@ -556,6 +556,20 @@ def test_stop_remembers_position_across_restart(tmp_path):
     asyncio.run(scenario())
 
 
+
+def test_select_from_start_ignores_and_clears_saved_position(tmp_path):
+    async def scenario():
+        player = FakeMpv()
+        controller = PlaybackController(FakeLibrary(), player, tmp_path / "state.json")
+        await controller.handle_command(Command(Opcode.SELECT_MOVIE, 0))
+        player.position = 37
+        await controller.handle_command(Command(Opcode.STOP))
+        assert controller.saved_position(0) == 37
+        await controller.handle_command(Command(Opcode.SELECT_MOVIE, 0), from_start=True)
+        assert player.position == 0
+        assert controller.saved_position(0) == 0
+    asyncio.run(scenario())
+
 def test_finish_clears_bookmark_and_failed_movie_stops(tmp_path):
     async def scenario():
         player = FakeMpv()

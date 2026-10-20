@@ -21,9 +21,9 @@ function poster(m) {
   const img = document.createElement('img'); img.src = thumb(m); img.alt = ''; img.loading = 'lazy';
   img.addEventListener('error', () => img.remove()); return img;
 }
-async function command(opcode, argument) {
+async function command(opcode, argument, extra) {
   try {
-    await api('/api/command', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({opcode, argument})});
+    await api('/api/command', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({opcode, argument, ...extra})});
     $('toast').textContent = ''; await status();
   } catch (error) {$('toast').textContent = error.message;}
 }
@@ -64,21 +64,40 @@ function render() {
   }
 }
 function openSheet(m) {
+  // A movie's details take the whole screen: a large poster, its details,
+  // and Play (Resume when it was watched partway, plus Play from beginning).
   const panel = $('panel'); panel.replaceChildren();
-  const img = poster(m); panel.append(img);
+  const close = document.createElement('button'); close.className = 'close-x movie-close'; close.setAttribute('aria-label', 'Close'); close.textContent = '×';
+  close.addEventListener('click', closeSheet);
+  const art = document.createElement('div'); art.className = 'art'; art.style.setProperty('--art', 'url("' + thumb(m) + '")');
+  art.append(poster(m));
   const body = document.createElement('div'); body.className = 'body';
   const h = document.createElement('h3'); h.textContent = m.title;
   const mt = document.createElement('div'); mt.className = 'meta'; mt.textContent = meta(m);
   body.append(h, mt);
-  if (m.description) {const p = document.createElement('p'); p.textContent = m.description; body.append(p);}
-  const row = document.createElement('div'); row.className = 'row';
-  const play = document.createElement('button'); play.className = 'btn'; play.textContent = '▶ Play';
+  const pos = m.id === state.movie_id && state.status !== 'stopped' ? state.position_seconds : m.position_seconds;
+  const partway = pos > 0 && (!m.duration_seconds || pos < m.duration_seconds);
+  if (partway && m.duration_seconds) {
+    const bar = document.createElement('div'); bar.className = 'progress';
+    const fill = document.createElement('i'); fill.style.width = Math.min(100, pos / m.duration_seconds * 100) + '%';
+    const left = document.createElement('small'); left.textContent = fmt(pos) + ' of ' + fmt(m.duration_seconds);
+    bar.append(fill); body.append(bar, left);
+  }
+  const row = document.createElement('div'); row.className = 'row stack';
+  const play = document.createElement('button'); play.className = 'btn'; play.textContent = partway ? '▶ Resume from ' + fmt(pos) : '▶ Play';
   play.addEventListener('click', () => {closeSheet(); command('select_movie', m.id);});
-  const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';
-  close.addEventListener('click', closeSheet);
-  row.append(play, close); body.append(row); panel.append(body); $('sheet').classList.remove('hidden', 'top');
+  row.append(play);
+  if (partway) {
+    const restart = document.createElement('button'); restart.className = 'btn grey'; restart.textContent = '↺ Play from beginning';
+    restart.addEventListener('click', () => {closeSheet(); command('select_movie', m.id, {from_start: true});});
+    row.append(restart);
+  }
+  body.append(row);
+  if (m.description) {const p = document.createElement('p'); p.textContent = m.description; body.append(p);}
+  panel.append(close, art, body);
+  $('sheet').classList.remove('hidden', 'top'); $('sheet').classList.add('movie');
 }
-function closeSheet() {$('sheet').classList.add('hidden'); $('sheet').classList.remove('top'); clearInterval(settingsTimer);}
+function closeSheet() {$('sheet').classList.add('hidden'); $('sheet').classList.remove('top', 'movie'); clearInterval(settingsTimer);}
 $('sheet').addEventListener('click', e => {if (e.target === $('sheet')) closeSheet();});
 $('search').addEventListener('input', render);
 $('toggle').addEventListener('click', () => command(state.status === 'playing' ? 'pause' : 'play'));
@@ -208,7 +227,7 @@ function openSettings(tab) {
   else buildControls(content, row);
   body.append(head, tabs, content); if (row.children.length) body.append(row); panel.append(body);
   // Settings drops down from the top; movie details still rise from the bottom.
-  $('sheet').classList.remove('hidden'); $('sheet').classList.add('top');
+  $('sheet').classList.remove('hidden', 'movie'); $('sheet').classList.add('top');
 }
 
 // Networks: the current connection (refreshed every 5 seconds) and the
@@ -455,7 +474,7 @@ function openActivity() {
   const close = document.createElement('button'); close.className = 'btn grey'; close.textContent = 'Close';
   close.addEventListener('click', closeSheet);
   row.append(close); body.append(h, details, row); panel.append(body);
-  $('sheet').classList.remove('hidden');
+  $('sheet').classList.remove('hidden', 'movie');
   refreshActivity(); clearInterval(activityTimer); activityTimer = setInterval(() => {if (!document.hidden) refreshActivity();}, 3000);
 }
 
