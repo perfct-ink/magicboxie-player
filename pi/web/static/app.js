@@ -64,8 +64,8 @@ function render() {
   }
 }
 function openSheet(m) {
-  // A movie's details take the whole screen: a large poster, its details,
-  // and Play (Resume when it was watched partway, plus Play from beginning).
+  // A movie's details: a modal on desktop, the whole screen on phones. Play
+  // becomes Resume when it was watched partway, plus Play from beginning.
   const panel = $('panel'); panel.replaceChildren();
   const close = document.createElement('button'); close.className = 'close-x movie-close'; close.setAttribute('aria-label', 'Close'); close.textContent = '×';
   close.addEventListener('click', closeSheet);
