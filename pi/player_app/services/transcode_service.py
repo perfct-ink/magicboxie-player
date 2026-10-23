@@ -4,8 +4,9 @@ by hand, or a copy made before the server's current encoding): re-encodes
 them, one at a time, to what the server makes - fitted inside 720x480,
 progressive, H.264 Baseline - so the Pi Zero plays them smoothly.
 
-Only runs while nothing plays, nothing downloads and the device is cool
-enough. When any of that changes mid-encode, ffmpeg is paused (SIGSTOP)
+Only runs while nothing plays, nothing downloads, the media server isn't
+about to supply the movie (see PlaybackController.home_server_pending) and
+the device is cool enough. When any of that changes mid-encode, ffmpeg is paused (SIGSTOP)
 rather than killed, so a long movie's progress isn't thrown away; it picks
 up again once the device is idle and cool."""
 from __future__ import annotations
@@ -71,8 +72,9 @@ class TranscodeService:
                 self._failed_movie_ids.add(movie.id)
 
     def may_run(self) -> bool:
-        """Idle (nothing playing or downloading) and not too hot. A missing
-        temperature reading doesn't stop it."""
+        """Idle (nothing playing or downloading), not still waiting to hear
+        from the media server, and not too hot. A missing temperature
+        reading doesn't stop it."""
         temperature = self._temperature()
         if temperature is not None:
             if temperature >= PAUSE_AT_CELSIUS:
@@ -81,7 +83,9 @@ class TranscodeService:
                 self._too_hot = True
             elif temperature < RESUME_BELOW_CELSIUS:
                 self._too_hot = False
-        return self._controller.is_idle and not self._controller.sync_busy and not self._too_hot
+        controller = self._controller
+        return (controller.is_idle and not controller.sync_busy
+                and not controller.home_server_pending and not self._too_hot)
 
     def _next_movie(self) -> Optional[Movie]:
         library = self._controller.library

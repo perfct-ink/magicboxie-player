@@ -69,6 +69,17 @@ class SyncActivity:
     # time.time() of the last check-in that reached the home server.
     reached_at: Optional[float] = None
     reachable: bool = False
+    # time.monotonic() since when the home server has been out of reach, or
+    # None while it's reachable or before the first check-in has finished -
+    # transcoding waits on this to tell "offline" from "not tried yet".
+    unreachable_since: Optional[float] = None
+
+    def mark_unreachable(self) -> None:
+        if self.reachable or self.unreachable_since is None:
+            self.unreachable_since = time.monotonic()
+        self.reachable = False
+        self.queued = []
+        self.preparing = []
 
 
 class _Login:
@@ -94,6 +105,7 @@ class HomeServerSync:
         on_progress: Optional[Callable[[Optional[str]], None]] = None,
         is_idle: Callable[[], bool] = lambda: True,
         on_busy: Optional[Callable[[bool], None]] = None,
+        activity: Optional[SyncActivity] = None,
     ):
         self._library = library
         self._base_url = base_url.rstrip("/")
@@ -119,7 +131,7 @@ class HomeServerSync:
         # `movies` with no duration/artwork) or missing its title/year/
         # description from the home server indefinitely.
         self._pending_metadata: List[dict] = []
-        self.activity = SyncActivity()
+        self.activity = activity or SyncActivity()
 
     async def check_in(self) -> None:
         try:
@@ -133,9 +145,7 @@ class HomeServerSync:
                 remote_movies = await self._register_and_list_movies(session)
             except (aiohttp.ClientError, TimeoutError) as exc:
                 logger.info("Home server check-in: couldn't list movies (%s)", exc)
-                self.activity.reachable = False
-                self.activity.queued = []
-                self.activity.preparing = []
+                self.activity.mark_unreachable()
                 return
 
             local_ids = {movie.title: movie.id for movie in self._library.movies}
@@ -219,6 +229,9 @@ class HomeServerSync:
 
         token = await self._authenticate(session)
         if token is None:
+            # Nothing can be downloaded, so as far as transcoding goes the
+            # home server is out of reach.
+            self.activity.mark_unreachable()
             return []
         headers = {"Authorization": f"Bearer {token}"}
         movies = await self._list_ready_movies(session, headers)
@@ -227,6 +240,7 @@ class HomeServerSync:
 
     def _reached(self, preparing: List[dict]) -> None:
         self.activity.reachable = True
+        self.activity.unreachable_since = None
         self.activity.reached_at = time.time()
         self.activity.preparing = preparing
 

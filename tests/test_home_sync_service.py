@@ -186,6 +186,17 @@ def test_check_in_handles_unreachable_movies_list(tmp_path):
     assert library.movies == []
 
 
+def test_check_in_that_cannot_reach_the_server_starts_the_offline_clock(tmp_path):
+    sync = HomeServerSync(_library(tmp_path), BASE_URL, "secret")
+
+    with aioresponses() as mocked:
+        mocked.post(f"{BASE_URL}/Users/AuthenticateByName", status=500)
+        asyncio.run(sync.check_in())
+
+    assert sync.activity.reachable is False
+    assert sync.activity.unreachable_since is not None
+
+
 def test_check_in_downloads_one_at_a_time_reporting_progress(tmp_path):
     """The device only ever has one movie in flight at once - downloads are
     large files over a slow link, and on_progress (which
@@ -405,6 +416,7 @@ def test_check_in_tracks_the_download_queue_and_home_server_preparing(tmp_path):
     assert queued_at_start == [("Alpha", ["Beta"]), ("Beta", [])]
     assert sync.activity.queued == []
     assert sync.activity.reachable is True
+    assert sync.activity.unreachable_since is None
     assert sync.activity.preparing == [{"title": "Gamma", "status": "transcoding", "progress_percent": 42.5}]
 
 

@@ -122,6 +122,12 @@ async def _run() -> None:
         controller = await run_io(PlaybackController, library, player, state_path=PLAYBACK_STATE_PATH)
         if stop_event.is_set():
             return
+        if HOME_SERVER_URL:
+            # Set before any worker starts, so TranscodeService knows from
+            # its first look that downloads may come first (see
+            # PlaybackController.home_server_pending).
+            from .services.home_sync_service import SyncActivity
+            controller.sync_activity = SyncActivity()
         workers = [
             _run_http(controller, stop_event),
             _run_keyboard(controller, stop_event),
@@ -482,13 +488,14 @@ async def _run_home_sync(controller: PlaybackController, stop_event: asyncio.Eve
         on_progress=set_syncing_title,
         is_idle=lambda: controller.is_idle,
         on_busy=lambda busy: setattr(controller, "sync_busy", busy),
+        activity=controller.sync_activity,
     )
     controller.sync_activity = sync.activity
     redraw_task = asyncio.create_task(redraw_idle_screen())
     try:
         while not stop_event.is_set():
             if not await host_resolves(HOME_SERVER_URL):
-                sync.activity.reachable = False
+                sync.activity.mark_unreachable()
                 await sleep_unless_stopped(stop_event, HOME_SERVER_RESOLVE_RETRY_SECONDS)
                 continue
             try:

@@ -305,6 +305,21 @@ def test_media_server_status_only_shows_while_it_is_reachable(tmp_path):
     assert controller.idle_activity is None
 
 
+def test_transcoding_here_waits_for_the_first_media_server_check_in(tmp_path):
+    controller = PlaybackController(FakeLibrary(transcode_dir=tmp_path), FakeMpv())
+    assert not controller.home_server_pending  # no home server configured
+    controller.sync_activity = activity = _activity()
+    assert controller.home_server_pending  # boot: Wi-Fi may still be joining
+    assert controller.idle_activity.heading == "Connecting"
+    activity.mark_unreachable()
+    assert controller.home_server_pending  # one failed look isn't "offline" yet
+    activity.unreachable_since -= 120
+    assert not controller.home_server_pending  # offline: transcode here
+    assert controller.idle_activity is None
+    activity.reachable = True
+    assert not controller.home_server_pending
+
+
 def test_slideshow_holds_still_while_downloading(tmp_path):
     async def scenario():
         controller = PlaybackController(_transcoded_library(tmp_path), FakeMpv())

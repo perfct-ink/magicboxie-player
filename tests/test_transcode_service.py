@@ -16,7 +16,7 @@ def _controller(tmp_path, **overrides):
     library = MovieLibrary(movies_dir, thumbnail_dir=tmp_path / "thumbnails", transcode_dir=tmp_path / "transcoded")
     controller = SimpleNamespace(library=library, is_idle=True, sync_busy=False,
                                  currently_transcoding_movie_id=None, transcode_position_seconds=None,
-                                 transcode_paused=False)
+                                 transcode_paused=False, home_server_pending=False)
     controller.__dict__.update(overrides)
     return controller
 
@@ -44,6 +44,14 @@ def test_runs_only_while_idle_not_downloading_and_cool(tmp_path):
     temperature[0] = transcode_service.RESUME_BELOW_CELSIUS - 1
     assert service.may_run()
     temperature[0] = None
+    assert service.may_run()
+
+
+def test_waits_until_the_media_server_is_known_to_be_out_of_reach(tmp_path):
+    controller = _controller(tmp_path, home_server_pending=True)
+    service = TranscodeService(controller, temperature=lambda: None)
+    assert not service.may_run()
+    controller.home_server_pending = False
     assert service.may_run()
 
 

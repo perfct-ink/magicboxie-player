@@ -26,6 +26,11 @@ PLAYBACK_SAVE_INTERVAL_SECONDS = 5
 _DOWNLOAD_COLOR = (245, 197, 66)
 _TRANSCODE_COLOR = (90, 200, 250)
 _UPDATE_COLOR = (255, 255, 255)
+# How long the home server must stay out of reach before this device counts
+# as offline and transcodes on its own. Covers boot, when Wi-Fi gets 30
+# seconds to join a saved network and the server's name is retried every 15,
+# so a movie that's about to be downloaded isn't transcoded here first.
+HOME_SERVER_OFFLINE_SECONDS = 90
 
 
 class PlaybackController:
@@ -96,6 +101,19 @@ class PlaybackController:
             return True
         activity = self.sync_activity
         return bool(activity and activity.reachable and (activity.queued or activity.preparing))
+
+    @property
+    def home_server_pending(self) -> bool:
+        """True while this device is still finding out whether the home
+        server is there: no check-in has finished yet, or it has been out of
+        reach for under HOME_SERVER_OFFLINE_SECONDS. Background transcoding
+        waits meanwhile, so boot doesn't start re-encoding a movie the media
+        server is about to supply before Wi-Fi has had a chance."""
+        activity = self.sync_activity
+        if activity is None or activity.reachable:
+            return False
+        since = activity.unreachable_since
+        return since is None or time.monotonic() - since < HOME_SERVER_OFFLINE_SECONDS
 
     @property
     def transcode_percent(self) -> Optional[float]:
@@ -181,6 +199,13 @@ class PlaybackController:
             others = len(activity.queued) - 1
             return IdleActivity("Downloading", activity.queued[0], None,
                                 "Waiting to start" + (f", {others} more after it" if others else ""),
+                                color=_DOWNLOAD_COLOR)
+
+        # Transcoding here is held back until the media server is known to
+        # be out of reach (see home_server_pending).
+        if self.home_server_pending and any(self.library.needs_transcoding(m.id) for m in self.movies):
+            return IdleActivity("Connecting", "Media server", None,
+                                "Downloads come first, then transcoding",
                                 color=_DOWNLOAD_COLOR)
         return None
 

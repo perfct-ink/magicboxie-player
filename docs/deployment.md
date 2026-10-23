@@ -276,7 +276,11 @@ On the 720x480 TV output the idle screen shows, in order of priority:
    many more are queued.
 3. **Transcoding** on the media server: a movie this player is waiting for,
    while the media server is reachable.
-4. Otherwise the poster slideshow. Movies stopped partway have a red
+4. **Connecting** to the media server, after boot while movies still need a
+   copy for this player. Transcoding here waits until the media server has
+   been out of reach for 90 seconds, so a movie it is about to supply is not
+   re-encoded first.
+5. Otherwise the poster slideshow. Movies stopped partway have a red
    progress bar along the bottom of the poster.
 
 The activity screens refresh their progress with each slideshow tick.
