@@ -27,10 +27,14 @@ SELF_UPDATE_SERVICE_FILE := /etc/systemd/system/$(SELF_UPDATE_NAME).service
 SELF_UPDATE_TIMER_FILE := /etc/systemd/system/$(SELF_UPDATE_NAME).timer
 BOOT_UPDATE_NAME := magicboxie-boot-update
 BOOT_UPDATE_SERVICE_FILE := /etc/systemd/system/$(BOOT_UPDATE_NAME).service
+# Files only the home media server (magicboxie-mediaserver's pi-setup.sh) has.
+# The player never installs there - see not-media-server.
+MEDIA_SERVER_MARKERS := $(wildcard /etc/magicboxie/docker.yaml /var/lib/magicboxie-docker)
 
 .PHONY: deploy pull install setup seed-movies run test service start stop \
 	restart redeploy self-update self-update-service logs \
-	uninstall clean wifi-service wifi-start sudoers sparse-refresh boot-update repair-checkout
+	uninstall clean wifi-service wifi-start sudoers sparse-refresh boot-update repair-checkout \
+	not-media-server remove-from-media-server
 
 # --- Raspberry Pi (native, no Docker) -------------------------------------
 # The real device: installs system packages + a venv directly on the Pi and
@@ -45,7 +49,7 @@ BOOT_UPDATE_SERVICE_FILE := /etc/systemd/system/$(BOOT_UPDATE_NAME).service
 # unit file's SupplementaryGroups, so it doesn't need the installing shell's
 # own group membership to have refreshed - that only matters if you
 # separately use `make run`.)
-install: setup seed-movies service self-update-service wifi-service start wifi-start
+install: not-media-server setup seed-movies service self-update-service wifi-service start wifi-start
 	@echo "install complete - MagicBoxie is running and will start automatically on boot."
 	@echo "Check status with: make logs"
 
@@ -55,7 +59,7 @@ install: setup seed-movies service self-update-service wifi-service start wifi-s
 # (covers changes to either system/*.in template), and restarts. Every step
 # is idempotent, so this is safe to re-run any time you've pushed changes
 # and want the Pi caught up and running them.
-deploy: pull setup service self-update-service wifi-service
+deploy: not-media-server pull setup service self-update-service wifi-service
 	sudo systemctl restart $(SERVICE_NAME)
 	$(MAKE) wifi-start
 	@echo "Pi is set up, deployed, and running - check status with: make logs"
@@ -75,7 +79,7 @@ pull: sparse-refresh
 # Adds the invoking user to the video/input/bluetooth groups it needs for
 # DRM output, keyboard Escape-to-stop, and BLE - re-login (or reboot) is
 # required for that group change to apply.
-setup: sparse-refresh
+setup: not-media-server sparse-refresh
 	@command -v apt-get >/dev/null || { echo "apt-get not found - these targets are for Raspberry Pi OS/Debian"; exit 1; }
 	sudo apt-get install -y --no-install-recommends \
 		python3-venv python3-dev build-essential \
@@ -140,7 +144,7 @@ test:
 # Renders system/magicboxie-player.service.in (user/paths filled in) to
 # /etc/systemd/system and enables it to start on boot. Doesn't start it -
 # run `make start` (or reboot) after.
-service: setup
+service: not-media-server setup
 	@# Renamed from magicboxie-device: retire the old unit so two daemons never contend for the ports.
 	-sudo systemctl disable --now magicboxie-device 2>/dev/null
 	sudo rm -f /etc/systemd/system/magicboxie-device.service
@@ -171,7 +175,7 @@ service: setup
 
 # Install the open AP profile without interrupting the current Wi-Fi session.
 # Startup tries saved networks before activating the AP as a fallback.
-wifi-service:
+wifi-service: not-media-server
 	sudo install -d -m 700 /etc/NetworkManager/system-connections
 	sudo install -m 600 system/magicboxie-hotspot.nmconnection /etc/NetworkManager/system-connections/magicboxie-hotspot.nmconnection
 	sudo install -m 644 system/magicboxie-hotspot-dnsmasq.conf /etc/magicboxie-hotspot-dnsmasq.conf
@@ -209,9 +213,15 @@ restart:
 	sudo systemctl restart $(SERVICE_NAME)
 
 # After pulling new code: reinstall into the venv and restart the service.
+# On the media server it removes the player instead: a stray install's own
+# self-update (older code) pulls this and calls redeploy.
+ifneq ($(MEDIA_SERVER_MARKERS),)
+redeploy: remove-from-media-server
+else
 redeploy: sparse-refresh service wifi-service
 	sudo systemctl restart $(SERVICE_NAME)
 	$(MAKE) wifi-start
+endif
 
 # Power loss mid-pull or mid-checkout can leave a stale index.lock, empty git
 # objects, or half-written tracked files. A device checkout (sparse, from
@@ -248,7 +258,8 @@ repair-checkout:
 # real device, but could during development on one) rather than risking
 # git's merge machinery touching them.
 self-update:
-	@$(MAKE) -s repair-checkout; \
+	@if [ -n "$(MEDIA_SERVER_MARKERS)" ]; then exec ./remove-from-media-server.sh; fi; \
+	$(MAKE) -s repair-checkout; \
 	if ! git rev-parse --verify -q 'HEAD^{commit}' >/dev/null; then \
 		echo "self-update: HEAD is unreadable - fetching a fresh copy"; \
 		git fetch origin HEAD && git reset --hard FETCH_HEAD || { echo "self-update: repair failed - will retry later"; exit 0; }; \
@@ -275,8 +286,21 @@ self-update:
 		python3 -c 'import sys; from pathlib import Path; from player_app.storage import atomic_write; atomic_write(Path(sys.argv[2]) / "magicboxie-installed-revision", sys.argv[1].encode())' "$$after" "$$(git rev-parse --git-dir)"; \
 	fi
 
+# The player runs only on the Pi Zero in the car. On the home media server it
+# would rename that Pi, turn off its nginx and take over its self-update units,
+# so every installing target refuses to run there.
+not-media-server:
+	@if [ -n "$(MEDIA_SERVER_MARKERS)" ]; then \
+		echo "This is the home media server ($(MEDIA_SERVER_MARKERS) exists) - the player installs only on the player Pi."; \
+		echo "To clear an earlier player install from it: make remove-from-media-server"; \
+		exit 1; \
+	fi
+
+remove-from-media-server:
+	./remove-from-media-server.sh
+
 # Lets the web service user reboot/power off and start the Wi-Fi search or a self-update, and nothing else.
-sudoers:
+sudoers: not-media-server
 	printf '%s ALL=(root) NOPASSWD: /usr/bin/systemctl reboot, /usr/bin/systemctl poweroff, /usr/bin/systemctl start --no-block magicboxie-wifi-search.service, /usr/bin/systemctl start --no-block magicboxie-self-update.service\n' "$$(whoami)" | sudo tee /etc/sudoers.d/magicboxie >/dev/null
 	sudo chmod 440 /etc/sudoers.d/magicboxie
 	sudo visudo -cf /etc/sudoers.d/magicboxie >/dev/null || { sudo rm -f /etc/sudoers.d/magicboxie; exit 1; }
@@ -285,7 +309,7 @@ sudoers:
 # pull, see self-update above) - part of install/pi so auto-update is
 # on by default rather than a separate opt-in step. Only the .service has
 # placeholders to fill in; the .timer is copied as-is.
-self-update-service:
+self-update-service: not-media-server
 	sed \
 		-e 's|@USER@|'"$$(whoami)"'|g' \
 		-e 's|@REPO_DIR@|$(CURDIR)|g' \

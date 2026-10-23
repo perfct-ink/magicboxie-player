@@ -41,6 +41,15 @@ The home server had a running `magicboxie-player.service` on port 8000 and
 nginx on port 80. Its Wi-Fi startup and self-update units were absent. Those
 observations describe the home server, not the other Pi. The target's current service state is listed above.
 
+The player must never be installed on the home server. Every installing
+`pi-*` target now refuses to run on a machine with the media server's files
+(`/etc/magicboxie/docker.yaml` or `/var/lib/magicboxie-docker`). An earlier
+install there removes itself on its next self-update, or by hand with
+`make pi-remove-from-media-server` (`pi/remove-from-media-server.sh`): it
+disables the player's units, restores the server's own
+`magicboxie-self-update` units, nginx and `magicboxie` hostname, and deletes
+the player checkout. The media server's `scripts/pi-setup.sh` does the same.
+
 Changes present only in a development working tree cannot reach the Pi through
 `git pull`; commit and push the intended release before using Git deployment.
 
