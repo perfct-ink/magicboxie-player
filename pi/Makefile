@@ -215,12 +215,18 @@ restart:
 # After pulling new code: reinstall into the venv and restart the service.
 # On the media server it removes the player instead: a stray install's own
 # self-update (older code) pulls this and calls redeploy.
+# Without passwordless sudo (the unattended updater has no one to type a
+# password) it skips the root-only steps and restarts the daemon on the new
+# code anyway - see redeploy-without-sudo.sh.
 ifneq ($(MEDIA_SERVER_MARKERS),)
 redeploy: remove-from-media-server
 else
-redeploy: sparse-refresh service wifi-service
-	sudo systemctl restart $(SERVICE_NAME)
-	$(MAKE) wifi-start
+redeploy: sparse-refresh
+	@if sudo -n true 2>/dev/null; then \
+		$(MAKE) service wifi-service && sudo systemctl restart $(SERVICE_NAME) && $(MAKE) wifi-start; \
+	else \
+		./redeploy-without-sudo.sh; \
+	fi
 endif
 
 # Power loss mid-pull or mid-checkout can leave a stale index.lock, empty git
